@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
     'oled_alert_cpu_percent': 90,
     'oled_alert_disk_percent': 90,
     'oled_alert_gpu_temp': 80,
+    'oled_alert_undervoltage': True,
     'temperature_unit': 'C',
     'gpio_fan_mode': 1,
     'gpio_fan_led_pin': 5,

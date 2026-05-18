@@ -1,6 +1,7 @@
 """Helpers for OLED multi-page stats (mounts, GPU, top processes)."""
 
 import os
+import re
 import time
 
 _top_proc_cache = {'at': 0.0, 'rows': []}
@@ -10,6 +11,13 @@ _cpu_pct_cache = {'value': 0.0, 'updated_at': 0.0, 'primed': False}
 _CPU_PCT_REFRESH = 0.85
 
 _gpu_v3d_state = {'last_at': 0.0, 'last_runtime': None, 'percent': None}
+
+_disk_temp_cache = {}
+_DISK_TEMP_TTL = 60.0
+_throttle_cache = {'at': 0.0, 'flags': None}
+
+_THROTTLE_UNDERVOLT_NOW = 0x1
+_THROTTLE_UNDERVOLT_HIST = 0x10000
 
 _EXCLUDED_FSTYPES = frozenset({
     'squashfs', 'tmpfs', 'devtmpfs', 'overlay', 'autofs',
@@ -346,6 +354,109 @@ def get_max_storage_percent(mounts=None):
     return max(m['percent'] for m in mounts)
 
 
+def _base_block_device(device):
+    dev = device or ''
+    if 'nvme' in dev:
+        match = re.match(r'(/dev/nvme\d+n\d+)', dev)
+        return match.group(1) if match else dev
+    if 'mmcblk' in dev:
+        match = re.match(r'(/dev/mmcblk\d+)', dev)
+        return match.group(1) if match else dev
+    if re.match(r'/dev/sd[a-z]\d+$', dev):
+        return re.sub(r'\d+$', '', dev)
+    return dev
+
+
+def _parse_smartctl_temperature(output):
+    for line in output.splitlines():
+        if 'Temperature_Celsius' in line:
+            parts = line.split()
+            for token in reversed(parts):
+                try:
+                    return int(float(token))
+                except ValueError:
+                    continue
+        if line.strip().lower().startswith('temperature:'):
+            match = re.search(r'(\d+)\s*C', line, re.I)
+            if match:
+                return int(match.group(1))
+    return None
+
+
+def _read_smartctl_temperature(disk):
+    from .utils import run_command
+
+    status, out = run_command(f'smartctl -a {disk} 2>/dev/null')
+    if status != 0 or not out:
+        return None
+    return _parse_smartctl_temperature(out)
+
+
+def get_mount_disk_temperature(device):
+    """Drive temperature via smartctl (NVMe/SSD/USB). Cached; SD often unavailable."""
+    base = _base_block_device(device)
+    if not base:
+        return None
+    now = time.time()
+    cached = _disk_temp_cache.get(base)
+    if cached and now - cached['at'] < _DISK_TEMP_TTL:
+        return cached['temp']
+
+    temp = _read_smartctl_temperature(base)
+    _disk_temp_cache[base] = {'at': now, 'temp': temp}
+    return temp
+
+
+def get_storage_disk_temperatures():
+    """List of (kind label, temp C) for mounts that report SMART temperature."""
+    rows = []
+    for mount in get_storage_mounts_usage():
+        temp = get_mount_disk_temperature(mount.get('device'))
+        if temp is None:
+            continue
+        label = mount.get('kind', 'DISK')
+        mp = mount.get('mountpoint', '')
+        if mp and mp != '/':
+            label = f'{label}'
+        rows.append((label, temp))
+    return rows
+
+
+def get_throttle_flags():
+    """Raspberry Pi throttle/undervoltage flags from vcgencmd (hex), or None."""
+    global _throttle_cache
+    now = time.time()
+    if now - _throttle_cache['at'] < 2.0 and _throttle_cache['flags'] is not None:
+        return _throttle_cache['flags']
+
+    from .utils import run_command
+
+    status, out = run_command('vcgencmd get_throttled 2>/dev/null')
+    flags = None
+    if status == 0 and '0x' in out:
+        try:
+            flags = int(out.split('=')[1].strip(), 16)
+        except ValueError:
+            flags = None
+    _throttle_cache['at'] = now
+    _throttle_cache['flags'] = flags
+    return flags
+
+
+def is_undervoltage_now():
+    flags = get_throttle_flags()
+    if flags is None:
+        return False
+    return bool(flags & _THROTTLE_UNDERVOLT_NOW)
+
+
+def is_undervoltage_recent():
+    flags = get_throttle_flags()
+    if flags is None:
+        return False
+    return bool(flags & (_THROTTLE_UNDERVOLT_NOW | _THROTTLE_UNDERVOLT_HIST))
+
+
 def collect_oled_alerts(
     cpu_temp_c=None,
     cpu_percent=None,
@@ -355,11 +466,15 @@ def collect_oled_alerts(
     alert_cpu_percent=90,
     alert_disk_percent=90,
     alert_gpu_temp=80,
+    undervoltage=False,
     temperature_unit='C',
 ):
     """Return short warning lines for OLED alert screen."""
     alerts = []
     unit = temperature_unit
+
+    if undervoltage:
+        alerts.append('PWR! LOW V')
 
     if cpu_temp_c is not None and cpu_temp_c >= alert_cpu_temp:
         t = cpu_temp_c if unit == 'C' else cpu_temp_c * 9 / 5 + 32
@@ -375,7 +490,7 @@ def collect_oled_alerts(
     if disk_percent is not None and disk_percent >= alert_disk_percent:
         alerts.append(f'DISK {disk_percent:.0f}%')
 
-    return alerts[:3]
+    return alerts[:4]
 
 
 def get_top_processes_cpu(count=3):

@@ -341,13 +341,15 @@ class SSD1306():
         h = len(heart)
         self.draw_bitmap(heart, int(cx - w / 2), int(cy - h / 2), fill=fill)
 
-    def draw_heart_fullscreen(self, fill=1):
-        """Large dotted heart — fills the display, pixel-style."""
+    def draw_heart_fullscreen(self, fill=1, margin=7):
+        """Large dotted heart with inset margin so it is not clipped by the case window."""
+        m = max(0, int(margin))
         mask = Image.new('1', (self.width, self.height))
         md = ImageDraw.Draw(mask)
-        md.ellipse((14, 4, 58, 48), fill=1)
-        md.ellipse((70, 4, 114, 48), fill=1)
-        md.polygon([(64, 62), (8, 24), (120, 24)], fill=1)
+        md.ellipse((14 + m, 4 + m, 58 + m, 48 + m), fill=1)
+        md.ellipse((70 + m, 4 + m, 114 - m, 48 + m), fill=1)
+        tip_y = max(52, 62 - m)
+        md.polygon([(64, tip_y), (8 + m, 24 + m), (120 - m, 24 + m)], fill=1)
         pix = mask.load()
         for y in range(self.height):
             for x in range(self.width):

@@ -66,6 +66,14 @@ Defaults: CPU temp 80°C, CPU 90%, disk 90%, GPU temp 80°C. Set in `config.json
 
 Fan page shows **TOWER** RPM (PWM) and **SIDE** on/off (GPIO) separately.
 
+## Tier 3 polish (v1.2.22+)
+
+- **Home IP bar:** `wlan0 192.168.1.5` (interface + address, rotates when multiple)
+- **Heart page:** inset margin so the shape is not clipped by the case window
+- **Storage icons:** refined 14×14 SD (notch), SSD, USB plug
+- **Storage / Temps:** disk temperature via `smartctl` when available (NVMe/SSD/USB)
+- **PWR! alert:** undervoltage from `vcgencmd get_throttled` → flashing warning (`oled_alert_undervoltage`)
+
 ## Based on
 
 Forked from [sunfounder/pm_auto](https://github.com/sunfounder/pm_auto) with OLED carousel and storage formatting changes.

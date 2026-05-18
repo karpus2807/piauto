@@ -14,6 +14,9 @@ from .system_stats import (
     get_gpu_usage_percent,
     get_top_processes_cpu,
     get_max_storage_percent,
+    get_mount_disk_temperature,
+    get_storage_disk_temperatures,
+    is_undervoltage_now,
     collect_oled_alerts,
 )
 import math
@@ -36,6 +39,7 @@ OLED_DEFAULT_CONFIG = {
     'oled_alert_cpu_percent': 90,
     'oled_alert_disk_percent': 90,
     'oled_alert_gpu_temp': 80,
+    'oled_alert_undervoltage': True,
 }
 
 WARN_DURATION_DEFAULT = 3
@@ -91,6 +95,7 @@ class OLED():
         self.alert_cpu_percent = OLED_DEFAULT_CONFIG['oled_alert_cpu_percent']
         self.alert_disk_percent = OLED_DEFAULT_CONFIG['oled_alert_disk_percent']
         self.alert_gpu_temp = OLED_DEFAULT_CONFIG['oled_alert_gpu_temp']
+        self.alert_undervoltage = OLED_DEFAULT_CONFIG['oled_alert_undervoltage']
         self._alert_until = 0.0
         self._alert_last_shown = 0.0
         self._alert_messages = []
@@ -213,6 +218,8 @@ class OLED():
             self.pages_profile = 'custom'
         if 'oled_alert_enable' in config:
             self.alert_enable = bool(config['oled_alert_enable'])
+        if 'oled_alert_undervoltage' in config:
+            self.alert_undervoltage = bool(config['oled_alert_undervoltage'])
         for key, attr in (
             ('oled_alert_duration', 'alert_duration'),
             ('oled_alert_cooldown', 'alert_cooldown'),
@@ -242,6 +249,7 @@ class OLED():
             cpu_percent=cpu_pct,
             gpu_temp_c=gpu_temp,
             disk_percent=disk_pct,
+            undervoltage=self.alert_undervoltage and is_undervoltage_now(),
             alert_cpu_temp=self.alert_cpu_temp,
             alert_cpu_percent=self.alert_cpu_percent,
             alert_disk_percent=self.alert_disk_percent,
@@ -279,10 +287,10 @@ class OLED():
         else:
             ink = 1
         self.oled.draw_text('! WARNING !', 64, 6, align='center', fill=ink, size='md')
-        y = 22
-        for msg in messages:
+        y = 20
+        for msg in messages[:4]:
             self.oled.draw_text(msg, 64, y, align='center', fill=ink, size='sm')
-            y += 12
+            y += 11
         self.oled.display()
 
     @log_error
@@ -312,8 +320,7 @@ class OLED():
         text = str(text)
         return text if len(text) <= max_len else text[: max_len - 1] + '~'
 
-    @log_error
-    def _get_ip_display(self):
+    def _get_ip_entries(self):
         ips = get_ips()
         for interface, ip in ips.items():
             if interface not in self.last_ips:
@@ -326,20 +333,24 @@ class OLED():
                 self.log.info(f"Disconnected from {interface}")
                 del self.last_ips[interface]
 
-        ip_list = []
-        if len(ips) > 0:
-            if self.ip_interface == 'all':
-                ip_list = list(ips.values())
-            elif self.ip_interface in ips:
-                ip_list = [ips[self.ip_interface]]
-                self.ip_index = 0
-        if not ip_list:
+        if not ips:
+            return []
+        if self.ip_interface == 'all':
+            return sorted(ips.items())
+        if self.ip_interface in ips:
+            return [(self.ip_interface, ips[self.ip_interface])]
+        return []
+
+    @log_error
+    def _get_ip_display(self):
+        entries = self._get_ip_entries()
+        if not entries:
             return 'DISCONNECTED'
-        ip = ip_list[self.ip_index % len(ip_list)]
+        iface, ip = entries[self.ip_index % len(entries)]
         if time.time() - self.ip_show_next_timestamp > self.ip_show_next_interval:
             self.ip_show_next_timestamp = time.time()
-            self.ip_index = (self.ip_index + 1) % len(ip_list)
-        return ip
+            self.ip_index = (self.ip_index + 1) % len(entries)
+        return self._truncate(f'{iface} {ip}', 16)
 
     @log_error
     def _draw_header(self, title, sub=''):
@@ -425,6 +436,16 @@ class OLED():
         bar_rect = Rect(39, 29, 88, 10)
         self.oled.draw_text(f'{kind}: {pair}', *info_rect.coord(), size='sm')
         self.oled.draw_bar_graph_horizontal(pct, *bar_rect.coord(), *bar_rect.size())
+
+        disk_temp = get_mount_disk_temperature(m.get('device'))
+        if disk_temp is not None:
+            unit = self.temperature_unit
+            if unit == 'F':
+                disk_temp = disk_temp * 9 / 5 + 32
+            self.oled.draw_text(
+                f'TEMP {disk_temp:.0f}{unit}',
+                39, 43, size='sm',
+            )
 
     @log_error
     def draw_cpu(self):
@@ -519,6 +540,16 @@ class OLED():
         if gpu_temp is not None:
             t = gpu_temp if self.temperature_unit == 'C' else gpu_temp * 9 / 5 + 32
             self.oled.draw_text(f'GPU {t:.1f}{self.temperature_unit}', 39, y, size='sm')
+            y += 12
+        for label, disk_temp in get_storage_disk_temperatures()[:2]:
+            if y > 52:
+                break
+            t = disk_temp if self.temperature_unit == 'C' else disk_temp * 9 / 5 + 32
+            self.oled.draw_text(
+                f'{label} {t:.0f}{self.temperature_unit}',
+                39, y, size='sm',
+            )
+            y += 12
 
     @log_error
     def draw_network(self, slide=0):
@@ -555,7 +586,7 @@ class OLED():
 
     @log_error
     def draw_heart(self):
-        self.oled.draw_heart_fullscreen(fill=1)
+        self.oled.draw_heart_fullscreen(fill=1, margin=7)
 
     @log_error
     def draw_current_page(self):
