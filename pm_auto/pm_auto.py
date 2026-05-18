@@ -17,7 +17,10 @@ DEFAULT_CONFIG = {
     'oled_disk': 'total',  # 'total' or the name of the disk, normally 'mmcblk0' for SD Card, 'nvme0n1' for NVMe SSD
     'oled_network_interface': 'all',  # 'all' or the name of the interface, normally 'wlan0' for WiFi, 'eth0' for Ethernet
     'oled_sleep': False,
-    'oled_sleep_timeout': 10,
+    'oled_sleep_timeout': 0,
+    'oled_home_duration': 15,
+    'oled_page_duration': 5,
+    'oled_pages_profile': 'full',
     'temperature_unit': 'C',
     'gpio_fan_mode': 1,
     'gpio_fan_led_pin': 5,
@@ -81,7 +84,10 @@ class PMAuto():
     @log_error
     def on_vabration_detected(self):
         self.log.info("Vibration detected")
-        self.oled.wake()
+        if self.oled is not None and self.oled.is_ready():
+            self.oled.go_home()
+        elif self.oled is not None:
+            self.oled.wake()
 
     @log_error
     def fan_enabled(self):

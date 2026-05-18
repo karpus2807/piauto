@@ -24,12 +24,23 @@ OLED_DEFAULT_CONFIG = {
     'oled_disk': 'total',
     'oled_network_interface': 'all',
     'oled_sleep_timeout': 0,
+    'oled_home_duration': 15,
+    'oled_page_duration': 5,
+    'oled_pages_profile': 'full',
 }
 
-HOME_DURATION = 15
-PAGE_DURATION = 5
-# One mount per storage page — page count grows with drives (SD / SSD / USB).
+# One mount / up to 4 network lines per page.
 MOUNTS_PER_STORAGE_SLIDE = 1
+NETWORK_LINES_PER_PAGE = 4
+
+OLED_PAGE_PROFILES = {
+    'full': (
+        'home', 'storage', 'network', 'cpu', 'gpu', 'fans',
+        'ram', 'temps', 'services', 'heart',
+    ),
+    'minimal': ('home', 'storage', 'heart'),
+    'server': ('home', 'storage', 'network', 'cpu', 'ram', 'services', 'heart'),
+}
 
 
 class OLED():
@@ -57,6 +68,10 @@ class OLED():
         self.ip_show_next_interval = 3
         self.wake_flag = True
         self.last_ips = {}
+        self.home_duration = OLED_DEFAULT_CONFIG['oled_home_duration']
+        self.page_duration = OLED_DEFAULT_CONFIG['oled_page_duration']
+        self.pages_profile = OLED_DEFAULT_CONFIG['oled_pages_profile']
+        self.enabled_pages = []
 
         self._page_sequence = []
         self._page_index = 0
@@ -70,17 +85,46 @@ class OLED():
     def set_fan_control(self, fan_control):
         self.fan_control = fan_control
 
+    def _resolve_enabled_pages(self):
+        if self.pages_profile == 'custom':
+            return list(self.enabled_pages)
+        profile = self.pages_profile
+        if profile in OLED_PAGE_PROFILES:
+            return list(OLED_PAGE_PROFILES[profile])
+        if isinstance(profile, (list, tuple)):
+            return list(profile)
+        return list(OLED_PAGE_PROFILES['full'])
+
     def _rebuild_pages(self):
+        enabled = self._resolve_enabled_pages()
         mounts = get_mounts_usage()
-        if mounts:
-            n_storage = math.ceil(len(mounts) / MOUNTS_PER_STORAGE_SLIDE)
-        else:
-            n_storage = 1
-        pages = [{'id': 'home', 'duration': HOME_DURATION}]
-        for slide in range(n_storage):
-            pages.append({'id': 'storage', 'slide': slide, 'duration': PAGE_DURATION})
-        for pid in ('cpu', 'gpu', 'fans', 'ram', 'temps', 'services', 'heart'):
-            pages.append({'id': pid, 'duration': PAGE_DURATION})
+        ips = get_ips()
+
+        pages = []
+        for pid in enabled:
+            if pid == 'home':
+                pages.append({'id': 'home', 'duration': self.home_duration})
+            elif pid == 'storage':
+                n_storage = max(1, math.ceil(len(mounts) / MOUNTS_PER_STORAGE_SLIDE)) if mounts else 1
+                for slide in range(n_storage):
+                    pages.append({
+                        'id': 'storage',
+                        'slide': slide,
+                        'duration': self.page_duration,
+                    })
+            elif pid == 'network':
+                n_net = max(1, math.ceil(len(ips) / NETWORK_LINES_PER_PAGE)) if ips else 1
+                for slide in range(n_net):
+                    pages.append({
+                        'id': 'network',
+                        'slide': slide,
+                        'duration': self.page_duration,
+                    })
+            else:
+                pages.append({'id': pid, 'duration': self.page_duration})
+
+        if not pages:
+            pages = [{'id': 'home', 'duration': self.home_duration}]
         self._page_sequence = pages
         if self._page_index >= len(self._page_sequence):
             self._page_index = 0
@@ -126,6 +170,41 @@ class OLED():
                 self.wake()
             else:
                 self.sleep()
+        if 'oled_home_duration' in config:
+            try:
+                self.home_duration = max(3, int(config['oled_home_duration']))
+            except (TypeError, ValueError):
+                self.log.error('Invalid oled_home_duration')
+        if 'oled_page_duration' in config:
+            try:
+                self.page_duration = max(2, int(config['oled_page_duration']))
+            except (TypeError, ValueError):
+                self.log.error('Invalid oled_page_duration')
+        if 'oled_pages_profile' in config:
+            self.pages_profile = config['oled_pages_profile']
+        if 'oled_pages' in config:
+            pages = config['oled_pages']
+            if isinstance(pages, str):
+                self.enabled_pages = [p.strip() for p in pages.split(',') if p.strip()]
+            elif isinstance(pages, (list, tuple)):
+                self.enabled_pages = list(pages)
+            self.pages_profile = 'custom'
+        self._rebuild_pages()
+
+    @log_error
+    def go_home(self):
+        """Jump to home page and reset its display timer (e.g. on vibration tap)."""
+        if not self._is_ready:
+            return
+        self._rebuild_pages()
+        self._page_index = 0
+        for i, page in enumerate(self._page_sequence):
+            if page['id'] == 'home':
+                self._page_index = i
+                break
+        self._page_started_at = time.time()
+        self.wake_flag = True
+        self.draw_current_page()
 
     @log_error
     def set_rotation(self, rotation):
@@ -216,7 +295,7 @@ class OLED():
         )
         self.oled.draw_bar_graph_horizontal(memory_percent, *memory_rect.coord(), *memory_rect.size())
 
-        self.oled.draw_text(f'DISK {disk_label}', *disk_info_rect.coord(), size='sm')
+        self.oled.draw_text(f'STORE {disk_label}', *disk_info_rect.coord(), size='sm')
         self.oled.draw_bar_graph_horizontal(disk_percent, *disk_rect.coord(), *disk_rect.size())
 
         self.oled.draw.rectangle(
@@ -350,6 +429,26 @@ class OLED():
             self.oled.draw_text(f'GPU {t:.1f}{self.temperature_unit}', 39, y, size='sm')
 
     @log_error
+    def draw_network(self, slide=0):
+        ips = get_ips()
+        items = sorted(ips.items())
+        total_slides = max(1, math.ceil(len(items) / NETWORK_LINES_PER_PAGE)) if items else 1
+        slide = min(slide, total_slides - 1)
+        start = slide * NETWORK_LINES_PER_PAGE
+        chunk = items[start : start + NETWORK_LINES_PER_PAGE]
+
+        self._draw_header('NETWORK', f'{slide + 1}/{total_slides}')
+        if not chunk:
+            self.oled.draw_text('No link', 39, 28, size='sm')
+            return
+
+        y = 17
+        for iface, ip in chunk:
+            line = f'{self._truncate(iface, 5)} {ip}'
+            self.oled.draw_text(self._truncate(line, 20), 4, y, size='sm')
+            y += 12
+
+    @log_error
     def draw_services(self):
         self._draw_header('TOP CPU')
         rows = get_top_processes_cpu(3)
@@ -376,6 +475,8 @@ class OLED():
             self.draw_home()
         elif pid == 'storage':
             self.draw_storage(page.get('slide', 0))
+        elif pid == 'network':
+            self.draw_network(page.get('slide', 0))
         elif pid == 'cpu':
             self.draw_cpu()
         elif pid == 'gpu':
