@@ -287,7 +287,15 @@ class SSD1306():
         self.draw = ImageDraw.Draw(self.image)
         font_path = str(resource_files(__package_name__).joinpath('fonts/Minecraftia-Regular.ttf'))
         self.font_8 = ImageFont.truetype(font_path, 8)
+        self.font_10 = ImageFont.truetype(font_path, 10)
         self.font_12 = ImageFont.truetype(font_path, 12)
+        self.font_14 = ImageFont.truetype(font_path, 14)
+        self._fonts = {
+            'sm': self.font_8,
+            'md': self.font_10,
+            'lg': self.font_12,
+            'xl': self.font_14,
+        }
 
     def clear(self):
         """Full clear of PIL buffer and SSD1306 RAM (avoids ghosting between pages)."""
@@ -295,14 +303,15 @@ class SSD1306():
         self.draw = ImageDraw.Draw(self.image)
         self.oled.clear()
 
-    def draw_text(self, text, x, y, fill=1, align='left'):
+    def draw_text(self, text, x, y, fill=1, align='left', size='sm'):
         text = str(text)
-        text_width = self.font_8.getlength(text)
+        font = self._fonts.get(size, self.font_8)
+        text_width = font.getlength(text)
         if align == 'center':
             x -= text_width / 2
         elif align == 'right':
             x -= text_width
-        self.draw.text((x, y), text=text, font=self.font_8, fill=fill)
+        self.draw.text((x, y), text=text, font=font, fill=fill)
 
     def draw_bar_graph_horizontal(self, percent, x, y, width, height):
         self.draw.rectangle((x, y, x+width, y+height), outline=1, fill=0)
@@ -333,10 +342,17 @@ class SSD1306():
         self.draw_bitmap(heart, int(cx - w / 2), int(cy - h / 2), fill=fill)
 
     def draw_heart_fullscreen(self, fill=1):
-        """Large heart filling most of the 128x64 display."""
-        self.draw.ellipse((22, 4, 66, 48), fill=fill)
-        self.draw.ellipse((62, 4, 106, 48), fill=fill)
-        self.draw.polygon([(64, 58), (18, 26), (110, 26)], fill=fill)
+        """Large dotted heart — fills the display, pixel-style."""
+        mask = Image.new('1', (self.width, self.height))
+        md = ImageDraw.Draw(mask)
+        md.ellipse((14, 4, 58, 48), fill=1)
+        md.ellipse((70, 4, 114, 48), fill=1)
+        md.polygon([(64, 62), (8, 24), (120, 24)], fill=1)
+        pix = mask.load()
+        for y in range(self.height):
+            for x in range(self.width):
+                if pix[x, y] and (x + y) % 3 != 1:
+                    self.draw.point((x, y), fill=fill)
 
     def draw_pieslice_chart(self, percent, x, y, r, start, end):
         '''

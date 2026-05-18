@@ -81,7 +81,7 @@ def format_storage_pair(used_bytes, total_bytes):
     u, _ = format_storage_bytes(used_bytes)
     t, unit = format_storage_bytes(total_bytes)
     pct = round(used_bytes / total_bytes * 100, 1)
-    return f"{u}/{t}{unit}", pct
+    return f"{u}/{t} {unit}", pct
 
 def has_common_items(list1, list2):
     return bool(set(list1) & set(list2))
