@@ -19,6 +19,7 @@ dynamic = ["version"]
 
 [project.scripts]
 pm-auto-oled = "pm_auto.cli_oled:main"
+pm-auto-status = "pm_auto.cli_status:main"
 
 [tool.setuptools]
 packages = ["pm_auto"]

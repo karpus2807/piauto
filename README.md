@@ -66,6 +66,28 @@ Defaults: CPU temp 80°C, CPU 90%, disk 90%, GPU temp 80°C. Set in `config.json
 
 Fan page shows **TOWER** RPM (PWM) and **SIDE** on/off (GPIO) separately.
 
+## Dashboard Tier 2 (v1.2.23+, not on OLED)
+
+Hostname, uptime, and per-mount **free space** for web dashboard integration only.
+
+```python
+from pm_auto.dashboard_stats import get_dashboard_snapshot
+
+data = get_dashboard_snapshot()
+# data['system']['hostname']  -> "node2"
+# data['system']['uptime']    -> "3d 4h 12m"
+# data['storage']['mounts'][0]['free_display'] -> "Free 109.1 GB"
+```
+
+CLI (no hardware required):
+
+```bash
+pm-auto-status --pretty
+```
+
+`PMAuto` also publishes flat keys every 5s on `set_on_state_changed` callback:
+`hostname`, `uptime`, `uptime_seconds`, `storage_combined`, `storage_mounts`.
+
 ## Tier 3 polish (v1.2.22+)
 
 - **Home IP bar:** `wlan0 192.168.1.5` (interface + address, rotates when multiple)

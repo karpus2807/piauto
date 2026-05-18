@@ -83,7 +83,9 @@ class PMAuto():
             self.oled.set_fan_control(self.fan)
 
         self.interval = 1
-    
+        self._dashboard_publish_interval = 5
+        self._dashboard_last_publish = 0.0
+
         self.thread = None
         self.running = False
 
@@ -122,6 +124,33 @@ class PMAuto():
         return self._is_ready
 
     @log_error
+    def get_dashboard_status(self):
+        """Tier-2 stats for web dashboard (hostname, uptime, storage free space)."""
+        from .dashboard_stats import get_dashboard_snapshot
+        return get_dashboard_snapshot()
+
+    @log_error
+    def _publish_dashboard_status(self):
+        if self.__on_state_changed__ is None:
+            return
+        now = time.time()
+        if now - self._dashboard_last_publish < self._dashboard_publish_interval:
+            return
+        self._dashboard_last_publish = now
+        try:
+            status = self.get_dashboard_status()
+            flat = {
+                'hostname': status['system'].get('hostname'),
+                'uptime': status['system'].get('uptime'),
+                'uptime_seconds': status['system'].get('uptime_seconds'),
+                'storage_combined': status['storage'].get('combined'),
+                'storage_mounts': status['storage'].get('mounts'),
+            }
+            self.__on_state_changed__(flat)
+        except Exception as e:
+            self.log.exception(f'Dashboard status publish failed: {e}')
+
+    @log_error
     def update_config(self, config):
         self.log.debug(f"Update config: {config}")
         if 'oled' in self.peripherals:
@@ -142,6 +171,7 @@ class PMAuto():
                 self.fan.run()
             if self.spc is not None and self.spc.is_ready():
                 self.spc.run()
+            self._publish_dashboard_status()
             time.sleep(self.interval)
 
     @log_error

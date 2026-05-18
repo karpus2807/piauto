@@ -83,6 +83,16 @@ def format_storage_pair(used_bytes, total_bytes):
     pct = round(used_bytes / total_bytes * 100, 1)
     return f"{u}/{t} {unit}", pct
 
+
+def format_storage_free_display(free_bytes, total_bytes):
+    """Human free-space string for dashboard: 'Free 109.1 GB' or '93% free'."""
+    if total_bytes <= 0:
+        return 'Free N/A', 0.0
+    free_bytes = max(0, int(free_bytes))
+    val, unit = format_storage_bytes(free_bytes)
+    pct_free = round(free_bytes / total_bytes * 100, 1)
+    return f'Free {val} {unit}', pct_free
+
 def has_common_items(list1, list2):
     return bool(set(list1) & set(list2))
 
