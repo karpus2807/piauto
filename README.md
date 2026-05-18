@@ -55,6 +55,17 @@ sudo systemctl restart pironman5.service
 
 Profiles: `full`, `minimal`, `server`
 
+## Alerts (v1.2.20+)
+
+When CPU/GPU temp, CPU %, or disk % cross thresholds, OLED shows a flashing **WARNING** screen for 3s (45s cooldown).
+
+Defaults: CPU temp 80°C, CPU 90%, disk 90%, GPU temp 80°C. Set in `config.json` under `system`:
+
+- `oled_alert_enable`, `oled_alert_duration`, `oled_alert_cooldown`
+- `oled_alert_cpu_temp`, `oled_alert_cpu_percent`, `oled_alert_disk_percent`, `oled_alert_gpu_temp`
+
+Fan page shows **TOWER** RPM (PWM) and **SIDE** on/off (GPIO) separately.
+
 ## Based on
 
 Forked from [sunfounder/pm_auto](https://github.com/sunfounder/pm_auto) with OLED carousel and storage formatting changes.

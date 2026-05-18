@@ -13,6 +13,8 @@ from .system_stats import (
     get_combined_disk,
     get_gpu_usage_percent,
     get_top_processes_cpu,
+    get_max_storage_percent,
+    collect_oled_alerts,
 )
 import math
 import time
@@ -27,7 +29,17 @@ OLED_DEFAULT_CONFIG = {
     'oled_home_duration': 15,
     'oled_page_duration': 5,
     'oled_pages_profile': 'full',
+    'oled_alert_enable': True,
+    'oled_alert_duration': 3,
+    'oled_alert_cooldown': 45,
+    'oled_alert_cpu_temp': 80,
+    'oled_alert_cpu_percent': 90,
+    'oled_alert_disk_percent': 90,
+    'oled_alert_gpu_temp': 80,
 }
+
+WARN_DURATION_DEFAULT = 3
+WARN_COOLDOWN_DEFAULT = 45
 
 # One mount / up to 4 network lines per page.
 MOUNTS_PER_STORAGE_SLIDE = 1
@@ -72,6 +84,16 @@ class OLED():
         self.page_duration = OLED_DEFAULT_CONFIG['oled_page_duration']
         self.pages_profile = OLED_DEFAULT_CONFIG['oled_pages_profile']
         self.enabled_pages = []
+        self.alert_enable = OLED_DEFAULT_CONFIG['oled_alert_enable']
+        self.alert_duration = OLED_DEFAULT_CONFIG['oled_alert_duration']
+        self.alert_cooldown = OLED_DEFAULT_CONFIG['oled_alert_cooldown']
+        self.alert_cpu_temp = OLED_DEFAULT_CONFIG['oled_alert_cpu_temp']
+        self.alert_cpu_percent = OLED_DEFAULT_CONFIG['oled_alert_cpu_percent']
+        self.alert_disk_percent = OLED_DEFAULT_CONFIG['oled_alert_disk_percent']
+        self.alert_gpu_temp = OLED_DEFAULT_CONFIG['oled_alert_gpu_temp']
+        self._alert_until = 0.0
+        self._alert_last_shown = 0.0
+        self._alert_messages = []
 
         self._page_sequence = []
         self._page_index = 0
@@ -189,7 +211,79 @@ class OLED():
             elif isinstance(pages, (list, tuple)):
                 self.enabled_pages = list(pages)
             self.pages_profile = 'custom'
+        if 'oled_alert_enable' in config:
+            self.alert_enable = bool(config['oled_alert_enable'])
+        for key, attr in (
+            ('oled_alert_duration', 'alert_duration'),
+            ('oled_alert_cooldown', 'alert_cooldown'),
+            ('oled_alert_cpu_temp', 'alert_cpu_temp'),
+            ('oled_alert_cpu_percent', 'alert_cpu_percent'),
+            ('oled_alert_disk_percent', 'alert_disk_percent'),
+            ('oled_alert_gpu_temp', 'alert_gpu_temp'),
+        ):
+            if key in config:
+                try:
+                    if 'duration' in key or 'cooldown' in key:
+                        setattr(self, attr, int(config[key]))
+                    else:
+                        setattr(self, attr, float(config[key]))
+                except (TypeError, ValueError):
+                    self.log.error(f'Invalid {key}')
         self._rebuild_pages()
+
+    @log_error
+    def _collect_alerts(self):
+        cpu_temp = get_cpu_temperature()
+        cpu_pct = get_cpu_percent() or 0
+        gpu_temp = get_gpu_temperature()
+        disk_pct = get_max_storage_percent()
+        return collect_oled_alerts(
+            cpu_temp_c=cpu_temp,
+            cpu_percent=cpu_pct,
+            gpu_temp_c=gpu_temp,
+            disk_percent=disk_pct,
+            alert_cpu_temp=self.alert_cpu_temp,
+            alert_cpu_percent=self.alert_cpu_percent,
+            alert_disk_percent=self.alert_disk_percent,
+            alert_gpu_temp=self.alert_gpu_temp,
+            temperature_unit=self.temperature_unit,
+        )
+
+    @log_error
+    def _handle_alerts(self):
+        if not self.alert_enable:
+            return False
+        now = time.time()
+        if now < self._alert_until:
+            self.draw_warn(self._alert_messages)
+            return True
+        messages = self._collect_alerts()
+        if not messages:
+            return False
+        if now - self._alert_last_shown < self.alert_cooldown:
+            return False
+        self._alert_messages = messages
+        self._alert_until = now + self.alert_duration
+        self._alert_last_shown = now
+        self.log.warning(f'OLED alert: {", ".join(messages)}')
+        self.draw_warn(messages)
+        return True
+
+    @log_error
+    def draw_warn(self, messages):
+        self.oled.clear()
+        flash_on = int(time.time() * 2) % 2 == 1
+        if flash_on:
+            self.oled.draw.rectangle((0, 0, 127, 63), fill=1)
+            ink = 0
+        else:
+            ink = 1
+        self.oled.draw_text('! WARNING !', 64, 6, align='center', fill=ink, size='md')
+        y = 22
+        for msg in messages:
+            self.oled.draw_text(msg, 64, y, align='center', fill=ink, size='sm')
+            y += 12
+        self.oled.display()
 
     @log_error
     def go_home(self):
@@ -361,14 +455,11 @@ class OLED():
         self.oled.draw_pieslice_chart(pct, 18, 38, 13, 180, 0)
         if gpu_pct is not None:
             self.oled.draw_text(f'{gpu_pct:.0f}%', 18, 38, align='center', size='sm')
-        else:
-            self.oled.draw_text('N/A', 18, 38, align='center', size='sm')
-
-        if gpu_pct is not None:
-            self.oled.draw_text(f'GPU: {gpu_pct:.0f}%', 39, 17, size='sm')
+            self.oled.draw_text(f'USE {gpu_pct:.0f}%', 39, 17, size='sm')
             self.oled.draw_bar_graph_horizontal(gpu_pct, 39, 29, 88, 10)
         else:
-            self.oled.draw_text('GPU: N/A', 39, 17, size='sm')
+            self.oled.draw_text('N/A', 18, 38, align='center', size='sm')
+            self.oled.draw_text('USE N/A', 39, 17, size='sm')
 
         if gpu_temp is not None:
             t = gpu_temp if self.temperature_unit == 'C' else gpu_temp * 9 / 5 + 32
@@ -384,14 +475,15 @@ class OLED():
             self.oled.draw_text('No fan data', 39, y, size='sm')
             return
         snap = self.fan_control.get_oled_snapshot()
-        if snap.get('pwm_rpm') is not None:
-            self.oled.draw_text(f'RPM {snap["pwm_rpm"]}', 39, y, size='sm')
+        if snap.get('tower_rpm') is not None:
+            self.oled.draw_text(f'TOWER {snap["tower_rpm"]} RPM', 4, y, size='sm')
             y += 12
-        if snap.get('gpio_on') is not None:
-            state = 'ON' if snap['gpio_on'] else 'OFF'
-            self.oled.draw_text(f'GPIO {state}', 39, y, size='sm')
+        if snap.get('side_on') is not None:
+            state = 'ON' if snap['side_on'] else 'OFF'
+            self.oled.draw_text(f'SIDE  {state}', 4, y, size='sm')
             y += 12
-        self.oled.draw_text(f'MODE {self._truncate(snap.get("mode", "?"), 10)}', 39, y, size='sm')
+        mode = self._truncate(snap.get('mode', '?'), 12)
+        self.oled.draw_text(f'MODE  {mode}', 4, y, size='sm')
 
     @log_error
     def draw_ram(self):
@@ -510,6 +602,8 @@ class OLED():
     @log_error
     def run(self):
         if self.oled is None or not self.oled.is_ready() or not self.wake_flag or not self.enable:
+            return
+        if self._handle_alerts():
             return
         self._advance_page_if_needed()
         self.draw_current_page()

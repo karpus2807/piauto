@@ -199,28 +199,29 @@ class FanControl:
 
     @log_error
     def get_oled_snapshot(self):
-        """Current fan state for OLED display."""
+        """Tower PWM + side GPIO fans for OLED."""
         snap = {
-            'pwm_rpm': None,
-            'gpio_on': None,
+            'tower_rpm': None,
+            'side_on': None,
             'mode': FAN_LEVELS[self.level]['name'],
         }
         if self.pwm_fan.is_ready():
             try:
-                snap['pwm_rpm'] = self.pwm_fan.get_speed()
+                snap['tower_rpm'] = self.pwm_fan.get_speed()
             except Exception:
                 pass
             if self.pwm_fan.is_supported():
                 try:
                     lvl = self.pwm_fan.get_state()
-                    snap['mode'] = f'PWM L{lvl}'
+                    if 0 <= lvl < len(FAN_LEVELS):
+                        snap['mode'] = FAN_LEVELS[lvl]['name']
                 except Exception:
                     pass
         if self.gpio_fan.is_ready() and getattr(self.gpio_fan, 'fan', None) is not None:
             try:
-                snap['gpio_on'] = bool(self.gpio_fan.fan.value)
+                snap['side_on'] = bool(self.gpio_fan.fan.value)
             except Exception:
-                snap['gpio_on'] = None
+                snap['side_on'] = None
         return snap
 
     @log_error
