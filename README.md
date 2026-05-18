@@ -42,6 +42,15 @@ sudo /opt/pironman5/venv/bin/pip3 install --upgrade git+https://github.com/karpu
 sudo systemctl start pironman5.service
 ```
 
+Pinned release (recommended for production):
+
+```bash
+sudo /opt/pironman5/venv/bin/pip3 install --upgrade \
+  "git+https://github.com/karpus2807/piauto.git@v1.2.24"
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## OLED profile / timing (no new pironman5 CLI required)
 
 After installing piauto, use `pm-auto-oled` (works even if `pironman5 -op` is not available):
@@ -49,11 +58,32 @@ After installing piauto, use `pm-auto-oled` (works even if `pironman5 -op` is no
 ```bash
 sudo /opt/pironman5/venv/bin/pm-auto-oled -op minimal
 sudo /opt/pironman5/venv/bin/pm-auto-oled -ohd 20 -opd 8
-sudo /opt/pironman5/venv/bin/pm-auto-oled -op
+sudo /opt/pironman5/venv/bin/pm-auto-oled --pages home,storage,network,heart
+sudo /opt/pironman5/venv/bin/pm-auto-oled --alert-cpu-temp 75 --alert-disk-percent 85
+sudo /opt/pironman5/venv/bin/pm-auto-oled --show
 sudo systemctl restart pironman5.service
 ```
 
 Profiles: `full`, `minimal`, `server`
+
+### OLED layout preview (no hardware)
+
+```bash
+pm-auto-oled-preview -o /tmp/oled-preview --profile full
+pm-auto-oled-preview --pages home,cpu,gpu --warn
+```
+
+Writes `oled_home.png`, `oled_storage_0.png`, … and optional `oled_warn.png`.
+
+## Tier 4 tooling (v1.2.24+)
+
+| Tool | Purpose |
+|------|---------|
+| `CHANGELOG.md` | Release history |
+| `git tag v1.2.x` | Pinned `pip install …@v1.2.24` |
+| `pm-auto-oled --pages` | Custom carousel in `config.json` |
+| `pm-auto-oled --alert-*` | Thresholds without editing JSON |
+| `pm-auto-oled-preview` | PNG export for layout dev |
 
 ## Alerts (v1.2.20+)
 

@@ -49,11 +49,13 @@ WARN_COOLDOWN_DEFAULT = 45
 MOUNTS_PER_STORAGE_SLIDE = 1
 NETWORK_LINES_PER_PAGE = 4
 
+OLED_PAGE_IDS = (
+    'home', 'storage', 'network', 'cpu', 'gpu', 'fans',
+    'ram', 'temps', 'services', 'heart',
+)
+
 OLED_PAGE_PROFILES = {
-    'full': (
-        'home', 'storage', 'network', 'cpu', 'gpu', 'fans',
-        'ram', 'temps', 'services', 'heart',
-    ),
+    'full': OLED_PAGE_IDS,
     'minimal': ('home', 'storage', 'heart'),
     'server': ('home', 'storage', 'network', 'cpu', 'ram', 'services', 'heart'),
 }
@@ -69,7 +71,8 @@ class OLED():
         self._is_ready = False
         self.fan_control = fan_control
 
-        self.oled = SSD1306(get_logger=get_logger)
+        preview = bool(config.get('oled_preview', False))
+        self.oled = SSD1306(get_logger=get_logger, preview=preview)
         if not self.oled.is_ready():
             self.log.error("Failed to initialize OLED")
             return
@@ -114,7 +117,12 @@ class OLED():
 
     def _resolve_enabled_pages(self):
         if self.pages_profile == 'custom':
-            return list(self.enabled_pages)
+            valid = set(OLED_PAGE_IDS)
+            pages = [p for p in self.enabled_pages if p in valid]
+            unknown = [p for p in self.enabled_pages if p not in valid]
+            if unknown:
+                self.log.warning(f'Unknown OLED pages ignored: {unknown}')
+            return pages
         profile = self.pages_profile
         if profile in OLED_PAGE_PROFILES:
             return list(OLED_PAGE_PROFILES[profile])

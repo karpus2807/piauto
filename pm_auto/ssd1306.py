@@ -24,8 +24,12 @@ from __future__ import division
 from PIL import Image, ImageDraw, ImageFont
 from importlib.resources import files as resource_files
 
-from .i2c import I2C
 from .utils import run_command
+
+
+def _i2c():
+    from .i2c import I2C
+    return I2C
 
 __package_name__ = __name__.split('.')[0]
 
@@ -75,7 +79,7 @@ class SSD1306Base(object):
 
     def __init__(self, width, height, i2c_bus=None, i2c_address=SSD1306_I2C_ADDRESS_1, i2c=None):
 
-        self._i2c = I2C()
+        self._i2c = _i2c()()
         self.addr = i2c_address
         self.width = width
         self.height = height
@@ -240,7 +244,7 @@ class Rect:
         return (self.x, self.y, self.x + int(self.width*pecent/100.0), self.y2)
 
 class SSD1306():
-    def __init__(self, get_logger=None):
+    def __init__(self, get_logger=None, preview=False):
         if get_logger is None:
             import logging
             get_logger = logging.getLogger
@@ -249,7 +253,12 @@ class SSD1306():
         self._is_ready = False
         self.oled = None
         self.rotation = 0
-        if not I2C.enabled():
+        self.preview = bool(preview)
+        self._last_frame = None
+        if self.preview:
+            self._init_preview()
+            return
+        if not _i2c().enabled():
             _, result = run_command("ls /dev/i2c*")
             self.log.error(f"I2C is not enabled. ls /dev/i2c* returned: \n{result}")
         else:
@@ -268,7 +277,7 @@ class SSD1306():
         return self._is_ready
 
     def check_oled(self):
-        addressed = I2C.scan()
+        addressed = _i2c().scan()
         result = []
         if SSD1306_I2C_ADDRESS_1 in addressed:
             result.append(SSD1306_I2C_ADDRESS_1)
@@ -276,15 +285,7 @@ class SSD1306():
             result.append(SSD1306_I2C_ADDRESS_2)
         return result
 
-    def init(self):
-        self.width = self.oled.width
-        self.height = self.oled.height
-        self.oled.begin()
-        self.oled.clear()
-        self.oled.on()
-
-        self.image = Image.new('1', (self.width, self.height))
-        self.draw = ImageDraw.Draw(self.image)
+    def _load_fonts(self):
         font_path = str(resource_files(__package_name__).joinpath('fonts/Minecraftia-Regular.ttf'))
         self.font_8 = ImageFont.truetype(font_path, 8)
         self.font_10 = ImageFont.truetype(font_path, 10)
@@ -297,11 +298,32 @@ class SSD1306():
             'xl': self.font_14,
         }
 
+    def _init_preview(self):
+        """Headless 128x64 buffer for layout export (no I2C)."""
+        self.width = 128
+        self.height = 64
+        self.image = Image.new('1', (self.width, self.height))
+        self.draw = ImageDraw.Draw(self.image)
+        self._load_fonts()
+        self._is_ready = True
+
+    def init(self):
+        self.width = self.oled.width
+        self.height = self.oled.height
+        self.oled.begin()
+        self.oled.clear()
+        self.oled.on()
+
+        self.image = Image.new('1', (self.width, self.height))
+        self.draw = ImageDraw.Draw(self.image)
+        self._load_fonts()
+
     def clear(self):
         """Full clear of PIL buffer and SSD1306 RAM (avoids ghosting between pages)."""
         self.image = Image.new('1', (self.width, self.height))
         self.draw = ImageDraw.Draw(self.image)
-        self.oled.clear()
+        if not self.preview and self.oled is not None:
+            self.oled.clear()
 
     def draw_text(self, text, x, y, fill=1, align='left', size='sm'):
         text = str(text)
@@ -371,11 +393,19 @@ class SSD1306():
 
     def display(self):
         image = self.image.rotate(self.rotation)
+        if self.preview:
+            self._last_frame = image.copy()
+            return
         self.oled.image(image)
-        # save image to file for debug
-        # image.save('/tmp/oled.png')
         self.oled.display()
 
+    def save_frame(self, path):
+        """Save last displayed frame (preview mode) or current buffer."""
+        frame = self._last_frame if self._last_frame is not None else self.image.rotate(self.rotation)
+        frame.save(path)
+
     def off(self):
+        if self.preview or self.oled is None:
+            return
         self.oled.off()
 
