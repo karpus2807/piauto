@@ -42,6 +42,19 @@ sudo /opt/pironman5/venv/bin/pip3 install --upgrade git+https://github.com/karpu
 sudo systemctl start pironman5.service
 ```
 
+## OLED profile / timing (no new pironman5 CLI required)
+
+After installing piauto, use `pm-auto-oled` (works even if `pironman5 -op` is not available):
+
+```bash
+sudo /opt/pironman5/venv/bin/pm-auto-oled -op minimal
+sudo /opt/pironman5/venv/bin/pm-auto-oled -ohd 20 -opd 8
+sudo /opt/pironman5/venv/bin/pm-auto-oled -op
+sudo systemctl restart pironman5.service
+```
+
+Profiles: `full`, `minimal`, `server`
+
 ## Based on
 
 Forked from [sunfounder/pm_auto](https://github.com/sunfounder/pm_auto) with OLED carousel and storage formatting changes.

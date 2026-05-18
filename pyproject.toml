@@ -17,6 +17,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.scripts]
+pm-auto-oled = "pm_auto.cli_oled:main"
+
 [tool.setuptools]
 packages = ["pm_auto"]
 
