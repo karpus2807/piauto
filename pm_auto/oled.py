@@ -27,7 +27,8 @@ OLED_DEFAULT_CONFIG = {
 
 HOME_DURATION = 15
 PAGE_DURATION = 5
-MOUNTS_PER_STORAGE_SLIDE = 2
+# One mount per storage page — page count grows with drives (SD / SSD / USB).
+MOUNTS_PER_STORAGE_SLIDE = 1
 
 
 class OLED():
@@ -70,7 +71,10 @@ class OLED():
 
     def _rebuild_pages(self):
         mounts = get_mounts_usage()
-        n_storage = max(1, math.ceil(len(mounts) / MOUNTS_PER_STORAGE_SLIDE))
+        if mounts:
+            n_storage = math.ceil(len(mounts) / MOUNTS_PER_STORAGE_SLIDE)
+        else:
+            n_storage = 1
         pages = [{'id': 'home', 'duration': HOME_DURATION}]
         for slide in range(n_storage):
             pages.append({'id': 'storage', 'slide': slide, 'duration': PAGE_DURATION})
@@ -230,18 +234,19 @@ class OLED():
 
         self._draw_header('STORAGE', f'{slide + 1}/{total_slides}')
         if not chunk:
-            self.oled.draw_text('No mounts', 4, 28)
+            self.oled.draw_text('No storage', 4, 28)
             return
 
-        y = 14
-        for m in chunk:
-            mp = self._truncate(m['mountpoint'], 10)
-            pair, pct = format_storage_pair(m['used'], m['total'])
-            dev = self._truncate(m['short_dev'], 10)
-            self.oled.draw_text(f'{mp} {dev}', 2, y)
-            self.oled.draw_text(pair, 2, y + 8)
-            self.oled.draw_bar_graph_horizontal(pct, 2, y + 16, 124, 5)
-            y += 22
+        m = chunk[0]
+        kind = m.get('kind', 'DISK')
+        mp = self._truncate(m['mountpoint'], 16)
+        pair, pct = format_storage_pair(m['used'], m['total'])
+        dev = self._truncate(m['short_dev'], 14)
+        self.oled.draw_text(f'{kind}  {dev}', 4, 16)
+        self.oled.draw_text(mp, 4, 28)
+        self.oled.draw_text(pair, 4, 40)
+        self.oled.draw_text(f'{pct:.1f}% used', 4, 50)
+        self.oled.draw_bar_graph_horizontal(pct, 4, 56, 120, 6)
 
     @log_error
     def draw_cpu(self):
@@ -331,11 +336,8 @@ class OLED():
 
     @log_error
     def draw_heart(self):
-        self.oled.draw_heart(64, 26, fill=1)
-        self.oled.draw_text('Pironman 5', 64, 48, align='center')
-        self.oled.draw_text('SunFounder', 64, 58, align='center')
+        self.oled.draw_heart_fullscreen(fill=1)
 
-    @log_error
     @log_error
     def draw_current_page(self):
         page = self._current_page()

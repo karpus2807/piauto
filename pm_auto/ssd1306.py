@@ -320,7 +320,7 @@ class SSD1306():
                     self.draw.point((x + col, y + row), fill=fill)
 
     def draw_heart(self, cx, cy, fill=1):
-        """Simple heart icon centered near (cx, cy)."""
+        """Small heart icon centered near (cx, cy)."""
         heart = (
             (0, 1, 0, 1, 0),
             (1, 1, 1, 1, 1),
@@ -331,6 +331,12 @@ class SSD1306():
         w = len(heart[0])
         h = len(heart)
         self.draw_bitmap(heart, int(cx - w / 2), int(cy - h / 2), fill=fill)
+
+    def draw_heart_fullscreen(self, fill=1):
+        """Large heart filling most of the 128x64 display."""
+        self.draw.ellipse((22, 4, 66, 48), fill=fill)
+        self.draw.ellipse((62, 4, 106, 48), fill=fill)
+        self.draw.polygon([(64, 58), (18, 26), (110, 26)], fill=fill)
 
     def draw_pieslice_chart(self, percent, x, y, r, start, end):
         '''

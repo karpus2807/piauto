@@ -6,9 +6,81 @@ import time
 _top_proc_cache = {'at': 0.0, 'rows': []}
 _TOP_PROC_TTL = 5.0
 
+_EXCLUDED_FSTYPES = frozenset({
+    'squashfs', 'tmpfs', 'devtmpfs', 'overlay', 'autofs',
+    'cgroup2', 'proc', 'sysfs', 'efivarfs', 'bpf',
+})
 
-def get_mounts_usage():
-    """All mounted partitions with usage. Includes SD, NVMe, USB when mounted."""
+_EXCLUDED_MOUNT_EXACT = frozenset({
+    '/boot', '/boot/firmware', '/boot/efi', '/efi', '/recovery',
+    '/var/lib/nfs/rpc_pipefs',
+})
+
+_EXCLUDED_MOUNT_PREFIXES = (
+    '/boot/',
+    '/snap/',
+    '/run/',
+    '/sys/',
+    '/proc/',
+    '/dev/',
+)
+
+
+def _storage_kind(device, mountpoint):
+    """Human label: SD, SSD, USB, or ROOT."""
+    dev = (device or '').lower()
+    mp = mountpoint or ''
+    if dev.startswith('nvme') or 'nvme' in dev:
+        return 'SSD'
+    if 'mmcblk' in dev or dev.startswith('/dev/mmc'):
+        if mp == '/':
+            return 'SD'
+        return 'SD'
+    if dev.startswith('sd') and 'mmc' not in dev:
+        return 'USB'
+    if mp.startswith('/media/') or mp.startswith('/mnt/'):
+        return 'USB' if 'mmc' not in dev and 'nvme' not in dev else 'DATA'
+    if mp == '/':
+        return 'SD'
+    return 'DISK'
+
+
+def is_user_storage_mount(part, total_bytes):
+    """True for SD root, NVMe SSD, and USB data volumes — not boot/firmware."""
+    mp = part.mountpoint
+    fstype = (part.fstype or '').lower()
+    dev = part.device or ''
+
+    if not mp or fstype in _EXCLUDED_FSTYPES:
+        return False
+    if mp in _EXCLUDED_MOUNT_EXACT:
+        return False
+    for prefix in _EXCLUDED_MOUNT_PREFIXES:
+        if mp.startswith(prefix):
+            return False
+
+    # Main OS root filesystem
+    if mp == '/':
+        return True
+
+    # USB / external / custom mounts
+    if mp.startswith('/media/') or mp.startswith('/mnt/'):
+        return True
+
+    # Block device data partitions (mmc, nvme, usb sdX)
+    base = dev.replace('/dev/', '')
+    if any(tag in base for tag in ('nvme', 'mmcblk', 'sd')):
+        # Skip typical small boot partition unless it's the only root
+        if base.endswith('p1') and total_bytes < 768 * 1024 * 1024 and mp != '/':
+            if not mp.startswith('/media') and not mp.startswith('/mnt'):
+                return False
+        return True
+
+    return False
+
+
+def get_storage_mounts_usage():
+    """Mounted user storage only: SD (/) , SSD (nvme), USB (/media, /mnt)."""
     from psutil import disk_partitions, disk_usage
 
     mounts = []
@@ -17,11 +89,11 @@ def get_mounts_usage():
         mp = part.mountpoint
         if not mp or mp in seen:
             continue
-        if part.fstype in ('squashfs', 'tmpfs', 'devtmpfs', 'overlay'):
-            continue
         try:
             usage = disk_usage(mp)
         except (PermissionError, OSError):
+            continue
+        if not is_user_storage_mount(part, usage.total):
             continue
         seen.add(mp)
         dev = part.device or ''
@@ -30,19 +102,27 @@ def get_mounts_usage():
             'mountpoint': mp,
             'device': dev,
             'short_dev': short_dev,
+            'kind': _storage_kind(dev, mp),
             'total': usage.total,
             'used': usage.used,
             'free': usage.free,
             'percent': usage.percent,
         })
-    mounts.sort(key=lambda m: m['mountpoint'])
+
+    order = {'SD': 0, 'SSD': 1, 'USB': 2, 'DATA': 3, 'DISK': 4}
+    mounts.sort(key=lambda m: (order.get(m['kind'], 9), m['mountpoint']))
     return mounts
 
 
+def get_mounts_usage():
+    """Alias: user storage mounts only (no /boot, /boot/firmware)."""
+    return get_storage_mounts_usage()
+
+
 def get_combined_disk(mounts=None):
-    """Sum of used/total across mounts; percent from bytes, not sum of percents."""
+    """Sum of used/total across user storage mounts; percent from bytes."""
     if mounts is None:
-        mounts = get_mounts_usage()
+        mounts = get_storage_mounts_usage()
     total = sum(m['total'] for m in mounts)
     used = sum(m['used'] for m in mounts)
     if total <= 0:
@@ -59,7 +139,6 @@ def get_gpu_usage_percent():
     """Best-effort GPU busy % on Raspberry Pi. None if unavailable."""
     from .utils import run_command
 
-    # Legacy VideoCore (some Pi OS images)
     status, out = run_command('vcgencmd measure_busy 2>/dev/null')
     if status == 0 and out.strip():
         try:
