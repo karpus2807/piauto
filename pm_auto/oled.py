@@ -1,7 +1,6 @@
 from .ssd1306 import SSD1306, Rect
 from sf_rpi_status import \
     get_cpu_temperature, \
-    get_cpu_percent, \
     get_gpu_temperature, \
     get_memory_info, \
     get_ips
@@ -11,6 +10,7 @@ from .oled_icons import draw_storage_icon
 from .system_stats import (
     get_mounts_usage,
     get_combined_disk,
+    get_system_cpu_percent,
     get_gpu_usage_percent,
     get_top_processes_cpu,
     get_max_storage_percent,
@@ -234,7 +234,7 @@ class OLED():
     @log_error
     def _collect_alerts(self):
         cpu_temp = get_cpu_temperature()
-        cpu_pct = get_cpu_percent() or 0
+        cpu_pct = get_system_cpu_percent()
         gpu_temp = get_gpu_temperature()
         disk_pct = get_max_storage_percent()
         return collect_oled_alerts(
@@ -355,7 +355,7 @@ class OLED():
 
         cpu_temp_c = get_cpu_temperature() or 0
         cpu_temp_f = cpu_temp_c * 9 / 5 + 32
-        cpu_usage = get_cpu_percent() or 0
+        cpu_usage = get_system_cpu_percent()
 
         memory_total, memory_unit = format_bytes(memory_info.total, auto_threshold=1024)
         memory_used = format_bytes(memory_info.used, memory_unit)
@@ -428,7 +428,7 @@ class OLED():
 
     @log_error
     def draw_cpu(self):
-        cpu_usage = get_cpu_percent() or 0
+        cpu_usage = get_system_cpu_percent()
         cpu_temp_c = get_cpu_temperature() or 0
         cpu_temp_f = cpu_temp_c * 9 / 5 + 32
         temp = cpu_temp_c if self.temperature_unit == 'C' else cpu_temp_f

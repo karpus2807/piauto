@@ -6,6 +6,11 @@ import time
 _top_proc_cache = {'at': 0.0, 'rows': []}
 _TOP_PROC_TTL = 5.0
 
+_cpu_pct_cache = {'value': 0.0, 'updated_at': 0.0, 'primed': False}
+_CPU_PCT_REFRESH = 0.85
+
+_gpu_v3d_state = {'last_at': 0.0, 'last_runtime': None, 'percent': None}
+
 _EXCLUDED_FSTYPES = frozenset({
     'squashfs', 'tmpfs', 'devtmpfs', 'overlay', 'autofs',
     'cgroup2', 'proc', 'sysfs', 'efivarfs', 'bpf',
@@ -138,6 +143,24 @@ def get_combined_disk(mounts=None):
 _gpu_usage_reader = None
 
 
+def get_system_cpu_percent():
+    """System CPU 0–100%, sampled once per OLED tick (avoids bogus interval=None spam)."""
+    import psutil
+
+    now = time.time()
+    if not _cpu_pct_cache['primed']:
+        _cpu_pct_cache['value'] = round(psutil.cpu_percent(interval=0.05), 1)
+        _cpu_pct_cache['primed'] = True
+        _cpu_pct_cache['updated_at'] = now
+        return _cpu_pct_cache['value']
+
+    if now - _cpu_pct_cache['updated_at'] >= _CPU_PCT_REFRESH:
+        _cpu_pct_cache['value'] = round(psutil.cpu_percent(interval=None), 1)
+        _cpu_pct_cache['updated_at'] = now
+
+    return max(0.0, min(100.0, _cpu_pct_cache['value']))
+
+
 def _parse_percent_value(raw):
     if raw is None:
         return None
@@ -166,6 +189,81 @@ def _gpu_from_vcgencmd_busy():
             val = _parse_percent_value(out)
             if val is not None:
                 return val
+    return None
+
+
+def _v3d_gpu_stats_paths():
+    import glob
+    paths = []
+    for pattern in (
+        '/sys/devices/platform/axi/1002000000.v3d/gpu_stats',
+        '/sys/devices/platform/v3dbus/*/gpu_stats',
+        '/sys/devices/platform/*/*v3d*/gpu_stats',
+    ):
+        paths.extend(glob.glob(pattern))
+    return paths
+
+
+def _sum_v3d_runtime_ns(path):
+    total = 0
+    with open(path, 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+            val = _parse_percent_value(stripped)
+            if val is not None and 'busy' in stripped.lower():
+                return val
+            parts = stripped.split()
+            if len(parts) < 4:
+                continue
+            try:
+                total += int(parts[3])
+            except ValueError:
+                continue
+    return total
+
+
+def _gpu_from_v3d_gpu_stats():
+    """Pi 5 / kernel 6.8+: busy % from cumulative V3D queue runtime (nanoseconds)."""
+    paths = _v3d_gpu_stats_paths()
+    if not paths:
+        return None
+    try:
+        runtime_sum = _sum_v3d_runtime_ns(paths[0])
+    except OSError:
+        return None
+
+    now = time.time()
+    last_rt = _gpu_v3d_state['last_runtime']
+    last_at = _gpu_v3d_state['last_at']
+    _gpu_v3d_state['last_runtime'] = runtime_sum
+    _gpu_v3d_state['last_at'] = now
+
+    if last_rt is None or now - last_at < 0.25:
+        return _gpu_v3d_state.get('percent')
+
+    delta_ns = max(0, runtime_sum - last_rt)
+    delta_t = now - last_at
+    if delta_t <= 0:
+        return _gpu_v3d_state.get('percent')
+
+    pct = round((delta_ns / 1e9) / delta_t * 100, 1)
+    pct = max(0.0, min(100.0, pct))
+    _gpu_v3d_state['percent'] = pct
+    return pct
+
+
+def _gpu_from_debugfs_usage():
+    import glob
+    for path in glob.glob('/sys/kernel/debug/dri/*/gpu_usage'):
+        try:
+            with open(path, 'r') as f:
+                val = _parse_percent_value(f.read())
+            if val is not None:
+                return val
+        except OSError:
+            continue
     return None
 
 
@@ -222,15 +320,18 @@ def get_gpu_usage_percent():
         return _gpu_usage_reader()
 
     readers = (
-        _gpu_from_vcgencmd_busy,
+        _gpu_from_v3d_gpu_stats,
+        _gpu_from_debugfs_usage,
         _gpu_from_sysfs_paths,
+        _gpu_from_vcgencmd_busy,
     )
     for reader in readers:
         val = reader()
         if val is not None:
-            _gpu_usage_reader = reader
+            if reader is not _gpu_from_v3d_gpu_stats:
+                _gpu_usage_reader = reader
             return val
-    return None
+    return _gpu_v3d_state.get('percent')
 
 
 def get_max_storage_percent(mounts=None):
@@ -281,16 +382,25 @@ def get_top_processes_cpu(count=3):
         return _top_proc_cache['rows'][:count]
 
     import psutil
-    psutil.cpu_percent(interval=0.1)
-    rows = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent']):
+
+    tracked = []
+    for proc in psutil.process_iter(['pid', 'name']):
         try:
-            info = proc.info
-            cpu = info.get('cpu_percent') or 0.0
+            proc.cpu_percent(interval=None)
+            tracked.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    time.sleep(0.12)
+
+    rows = []
+    for proc in tracked:
+        try:
+            info = proc.as_dict(attrs=['pid', 'name'])
+            cpu = proc.cpu_percent(interval=None) or 0.0
             if cpu <= 0:
                 continue
             name = (info.get('name') or '?')[:14]
-            rows.append({'name': name, 'cpu_percent': round(cpu, 1)})
+            rows.append({'name': name, 'cpu_percent': round(min(cpu, 999), 1)})
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
     rows.sort(key=lambda r: r['cpu_percent'], reverse=True)
