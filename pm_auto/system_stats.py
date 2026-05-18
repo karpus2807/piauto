@@ -204,24 +204,26 @@ def _v3d_gpu_stats_paths():
     return paths
 
 
-def _sum_v3d_runtime_ns(path):
-    total = 0
+def _read_v3d_gpu_stats(path):
+    """Return (direct_percent, runtime_sum_ns). direct_percent set if sysfs exposes it."""
+    runtime_sum = 0
     with open(path, 'r') as f:
         for line in f:
             stripped = line.strip()
             if not stripped or stripped.startswith('#'):
                 continue
-            val = _parse_percent_value(stripped)
-            if val is not None and 'busy' in stripped.lower():
-                return val
+            if 'busy_percent' in stripped.lower():
+                val = _parse_percent_value(stripped)
+                if val is not None:
+                    return val, None
             parts = stripped.split()
             if len(parts) < 4:
                 continue
             try:
-                total += int(parts[3])
+                runtime_sum += int(parts[3])
             except ValueError:
                 continue
-    return total
+    return None, runtime_sum
 
 
 def _gpu_from_v3d_gpu_stats():
@@ -230,9 +232,11 @@ def _gpu_from_v3d_gpu_stats():
     if not paths:
         return None
     try:
-        runtime_sum = _sum_v3d_runtime_ns(paths[0])
+        direct, runtime_sum = _read_v3d_gpu_stats(paths[0])
     except OSError:
         return None
+    if direct is not None:
+        return direct
 
     now = time.time()
     last_rt = _gpu_v3d_state['last_runtime']
