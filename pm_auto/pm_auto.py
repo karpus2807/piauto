@@ -139,14 +139,16 @@ class PMAuto():
         self._dashboard_last_publish = now
         try:
             status = self.get_dashboard_status()
-            flat = {
-                'hostname': status['system'].get('hostname'),
-                'uptime': status['system'].get('uptime'),
-                'uptime_seconds': status['system'].get('uptime_seconds'),
-                'storage_combined': status['storage'].get('combined'),
-                'storage_mounts': status['storage'].get('mounts'),
-            }
-            self.__on_state_changed__(flat)
+            combined = status['storage'].get('combined') or {}
+            flat = {}
+            if status['system'].get('uptime_seconds') is not None:
+                flat['uptime_seconds'] = status['system']['uptime_seconds']
+            if combined.get('percent_free') is not None:
+                flat['storage_percent_free'] = combined['percent_free']
+            if combined.get('percent_used') is not None:
+                flat['storage_percent_used'] = combined['percent_used']
+            if flat:
+                self.__on_state_changed__(flat)
         except Exception as e:
             self.log.exception(f'Dashboard status publish failed: {e}')
 

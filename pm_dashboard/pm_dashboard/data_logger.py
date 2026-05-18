@@ -119,26 +119,22 @@ class DataLogger:
             data['network_upload_speed'] = int(network_speed.upload)
             data['network_download_speed'] = int(network_speed.download)
 
-            for name in self.status:
-                data[name] = self.status[name]
+            for name, value in self.status.items():
+                if isinstance(value, (dict, list, tuple)):
+                    continue
+                data[name] = value
 
             try:
                 from pm_auto.dashboard_stats import get_dashboard_snapshot
                 snap = get_dashboard_snapshot()
                 sys_info = snap.get('system') or {}
-                if sys_info.get('hostname'):
-                    data['hostname'] = str(sys_info['hostname'])
                 if sys_info.get('uptime_seconds') is not None:
                     data['uptime_seconds'] = float(sys_info['uptime_seconds'])
-                if sys_info.get('uptime'):
-                    data['uptime'] = str(sys_info['uptime'])
                 combined = (snap.get('storage') or {}).get('combined') or {}
-                if combined.get('free_display'):
-                    data['storage_free_display'] = str(combined['free_display'])
                 if combined.get('percent_free') is not None:
                     data['storage_percent_free'] = float(combined['percent_free'])
-                if combined.get('used_total_display'):
-                    data['storage_used_total_display'] = str(combined['used_total_display'])
+                if combined.get('percent_used') is not None:
+                    data['storage_percent_used'] = float(combined['percent_used'])
             except Exception:
                 pass
 
@@ -147,10 +143,15 @@ class DataLogger:
                 for key in spc:
                     data[key] = spc[key]
 
-            for key in data:
+            for key in list(data.keys()):
                 value = data[key]
                 if isinstance(value, bool):
                     data[key] = int(value)
+                elif isinstance(value, (dict, list, tuple)):
+                    del data[key]
+                elif isinstance(value, str) and ' ' in value:
+                    # Influx line protocol breaks on unquoted strings with spaces.
+                    del data[key]
 
             status, msg = self.db.set('history', data)
             if not status:

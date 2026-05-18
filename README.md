@@ -126,6 +126,16 @@ pm-auto-status --pretty
 - **Storage / Temps:** disk temperature via `smartctl` when available (NVMe/SSD/USB)
 - **PWR! alert:** undervoltage from `vcgencmd get_throttled` → flashing warning (`oled_alert_undervoltage`)
 
+## Web dashboard (pm_dashboard v1.3.0+)
+
+Advanced **Control Center**: `http://<pi-ip>:34001/control`
+
+- Full `config.json` `system` keys via UI (RGB, fans, OLED, alerts)
+- Presets: Quiet Desktop, Performance, Server, Night, etc.
+- Uses `dashboard_stats` for hostname / uptime / free storage on live bar
+
+Install from this repo’s `pm_dashboard/` folder (see root `install.py`).
+
 ## Based on
 
 Forked from [sunfounder/pm_auto](https://github.com/sunfounder/pm_auto) with OLED carousel and storage formatting changes.
