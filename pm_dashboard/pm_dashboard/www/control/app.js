@@ -11,8 +11,19 @@ async function api(path, method = 'GET', body) {
     headers: { 'Content-Type': 'application/json' },
   };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  const res = await fetch(API + path, opts);
-  const json = await res.json();
+  let res;
+  try {
+    res = await fetch(API + path, opts);
+  } catch (e) {
+    throw new Error('Network error — use http://<pi-ip>:34001/control (not a file link)');
+  }
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (_) {
+    throw new Error(`Bad response (${res.status}): ${text.slice(0, 120)}`);
+  }
   if (!json.status) throw new Error(json.error || 'Request failed');
   return json.data;
 }
@@ -23,13 +34,21 @@ function toast(msg, err = false) {
   el.classList.toggle('err', err);
   el.classList.remove('hidden');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.add('hidden'), 2800);
+  toast._t = setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
-function setConn(ok) {
+function setConn(state) {
   const el = document.getElementById('conn');
-  el.textContent = ok ? 'Connected' : 'Offline';
-  el.className = 'pill ' + (ok ? 'ok' : 'err');
+  if (state === 'ok') {
+    el.textContent = 'Connected';
+    el.className = 'pill ok';
+  } else if (state === 'err') {
+    el.textContent = 'Offline';
+    el.className = 'pill err';
+  } else {
+    el.textContent = 'Connecting…';
+    el.className = 'pill';
+  }
 }
 
 async function patchConfig(patch) {
@@ -57,11 +76,11 @@ function renderLive(data) {
   const stor = (d.storage || {}).combined || {};
   const items = [
     ['Host', sys.hostname || h.hostname || '—'],
-    ['Uptime', sys.uptime || h.uptime || '—'],
-    ['CPU', h.cpu_temperature != null ? `${h.cpu_temperature.toFixed(1)}°C` : '—'],
+    ['Uptime', sys.uptime || (h.uptime_seconds != null ? `${Math.floor(h.uptime_seconds / 3600)}h` : '—')],
+    ['CPU', h.cpu_temperature != null ? `${Number(h.cpu_temperature).toFixed(1)}°C` : '—'],
     ['CPU %', h.cpu_percent != null ? `${Math.round(h.cpu_percent)}%` : '—'],
     ['RAM', h.memory_percent != null ? `${Math.round(h.memory_percent)}%` : '—'],
-    ['Storage', stor.free_display || h.storage_free_display || '—'],
+    ['Storage', stor.free_display || (h.storage_percent_free != null ? `${h.storage_percent_free}% free` : '—')],
     ['Tower RPM', h.pwm_fan_speed != null ? h.pwm_fan_speed : '—'],
     ['Side fan', h.gpio_fan_state != null ? (h.gpio_fan_state ? 'ON' : 'OFF') : '—'],
   ];
@@ -73,7 +92,11 @@ function renderLive(data) {
 function renderPresets() {
   const box = document.getElementById('presets');
   box.innerHTML = '';
-  (schema.presets || []).forEach((p) => {
+  if (!schema || !schema.presets || !schema.presets.length) {
+    box.innerHTML = '<p class="hint">No presets loaded — check API connection.</p>';
+    return;
+  }
+  schema.presets.forEach((p) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'preset';
@@ -158,11 +181,11 @@ function makeOledPages() {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = current.includes(id);
+    cb.value = id;
     cb.onchange = () => {
       const selected = [...box.querySelectorAll('input:checked')].map((x) => x.value);
       patchConfig({ oled_pages: selected.join(','), oled_pages_profile: 'custom' });
     };
-    cb.value = id;
     label.appendChild(cb);
     label.appendChild(document.createTextNode(id));
     box.appendChild(label);
@@ -219,18 +242,18 @@ function renderTabs() {
   panelsEl.innerHTML = '';
 
   const sections = (schema.sections || []).filter((s) => s.fields && s.fields.length);
+  if (!sections.length) {
+    panelsEl.innerHTML = '<p class="hint">No controls for this device — check pironman5 config.</p>';
+    return;
+  }
   sections.forEach((sec, i) => {
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = 'tab' + (i === 0 ? ' active' : '');
     tab.textContent = sec.label;
     tab.onclick = () => {
-      tabsEl.querySelectorAll('.tab').forEach((t, j) => {
-        t.classList.toggle('active', j === i);
-      });
-      panelsEl.querySelectorAll('.panel').forEach((p, j) => {
-        p.classList.toggle('active', j === i);
-      });
+      tabsEl.querySelectorAll('.tab').forEach((t, j) => t.classList.toggle('active', j === i));
+      panelsEl.querySelectorAll('.panel').forEach((p, j) => p.classList.toggle('active', j === i));
     };
     tabsEl.appendChild(tab);
 
@@ -243,31 +266,43 @@ function renderTabs() {
 
 async function loadAll() {
   schema = await api('/get-control-schema');
-  config = { ...schema.config };
+  config = { ...(schema.config || {}) };
   try {
     oledOptions = await api('/get-oled-options');
-  } catch (_) { /* optional */ }
+  } catch (_) {
+    oledOptions = { disks: ['total'], interfaces: ['all'] };
+  }
   renderPresets();
   renderTabs();
-  const live = await api('/get-live-status');
-  renderLive(live);
+  try {
+    const live = await api('/get-live-status');
+    renderLive(live);
+  } catch (_) {
+    document.getElementById('live').innerHTML = '<p class="hint">Live stats unavailable</p>';
+  }
 }
 
 async function init() {
+  setConn('wait');
   try {
     await api('/test');
-    setConn(true);
-    await loadAll();
-    setInterval(async () => {
-      try {
-        const live = await api('/get-live-status');
-        renderLive(live);
-      } catch (_) { /* ignore poll errors */ }
-    }, 3000);
   } catch (e) {
-    setConn(false);
+    setConn('err');
     toast(e.message, true);
+    return;
   }
+  setConn('ok');
+  try {
+    await loadAll();
+  } catch (e) {
+    toast('Load failed: ' + e.message, true);
+  }
+  setInterval(async () => {
+    try {
+      const live = await api('/get-live-status');
+      renderLive(live);
+    } catch (_) { /* ignore */ }
+  }, 3000);
 }
 
 init();

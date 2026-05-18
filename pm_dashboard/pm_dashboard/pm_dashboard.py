@@ -40,6 +40,33 @@ __mqtt_connected__ = False
 __on_outside_config_changed__ = lambda config: None
 __on_inside_config_changed__ = lambda config: None
 
+
+def _control_get_history(n=1):
+    if __db__ is None:
+        return {}
+    data = __db__.get('history', n=n)
+    return data if isinstance(data, dict) else {}
+
+
+def _register_control_center():
+    from .control_routes import register_control_routes
+    register_control_routes(
+        __app__,
+        __api_prefix__,
+        __www_path__,
+        {
+            'get_config': lambda: __config__,
+            'get_device_info': lambda: __device_info__,
+            'on_config_changed': __on_config_changed__,
+            'get_history': _control_get_history,
+            'get_disks': get_disks,
+            'get_ips': get_ips,
+        },
+    )
+
+
+_register_control_center()
+
 def __on_config_changed__(config):
     global __config__, __on_outside_config_changed__, __on_inside_config_changed__
     __on_outside_config_changed__(config)
@@ -111,10 +138,12 @@ def dashboard():
     with open(f'{__app__.static_folder}/index.html') as f:
         return f.read()
 
-# Host static files for dashboard page
+# Host static files for dashboard page (after /control routes — see _register_control_center)
 @__app__.route('/<path:filename>')
 @cross_origin()
 def serve_static(filename):
+    if filename.startswith('control/') or filename == 'control':
+        return send_from_directory(f'{__www_path__}/control', filename.split('/')[-1])
     path = __app__.static_folder
     if '/' in filename:
         items = filename.split('/')
@@ -410,30 +439,6 @@ def delete_log_file():
         return {"status": True, "data": "OK"}
     except Exception as e:
         return {"status": False, "error": str(e)}
-
-
-def _control_get_history(n=1):
-    if __db__ is None:
-        return {}
-    data = __db__.get('history', n=n)
-    return data if isinstance(data, dict) else {}
-
-
-from .control_routes import register_control_routes
-
-register_control_routes(
-    __app__,
-    __api_prefix__,
-    __www_path__,
-    {
-        'get_config': lambda: __config__,
-        'get_device_info': lambda: __device_info__,
-        'on_config_changed': __on_config_changed__,
-        'get_history': _control_get_history,
-        'get_disks': get_disks,
-        'get_ips': get_ips,
-    },
-)
 
 
 class PMDashboard():

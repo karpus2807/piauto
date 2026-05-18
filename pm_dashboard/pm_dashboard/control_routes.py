@@ -1,8 +1,10 @@
 """Flask routes for the advanced control center."""
 
 import json
+import traceback
 
 from flask import request, send_from_directory
+from flask_cors import cross_origin
 
 from .control_schema import (
     PRESETS,
@@ -23,22 +25,28 @@ def register_control_routes(app, api_prefix, static_folder, getters):
 
     @app.route('/control')
     @app.route('/control/')
+    @cross_origin()
     def control_index():
         return send_from_directory(f'{static_folder}/control', 'index.html')
 
     @app.route('/control/<path:filename>')
+    @cross_origin()
     def control_assets(filename):
         return send_from_directory(f'{static_folder}/control', filename)
 
     @app.route(f'{api_prefix}/get-control-schema')
+    @cross_origin()
     def get_control_schema():
-        cfg = get_config()
-        dev = get_device_info()
-        peripherals = (dev or {}).get('peripherals', [])
-        return {
-            'status': True,
-            'data': build_control_schema(cfg, peripherals),
-        }
+        try:
+            cfg = get_config() or {}
+            dev = get_device_info() or {}
+            peripherals = dev.get('peripherals', [])
+            return {
+                'status': True,
+                'data': build_control_schema(cfg, peripherals),
+            }
+        except Exception as e:
+            return {'status': False, 'error': str(e), 'trace': traceback.format_exc()[-500:]}
 
     @app.route(f'{api_prefix}/get-live-status')
     def get_live_status():
