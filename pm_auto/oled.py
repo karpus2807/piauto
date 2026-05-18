@@ -170,9 +170,9 @@ class OLED():
 
     @log_error
     def _draw_header(self, title, sub=''):
-        self.oled.draw_text(title, 2, 0, fill=1, size='md')
+        self.oled.draw_text(title, 2, 0, fill=1, size='sm')
         if sub:
-            self.oled.draw_text(sub, 127, 0, fill=1, align='right', size='md')
+            self.oled.draw_text(sub, 127, 0, fill=1, align='right', size='sm')
 
     @log_error
     def draw_home(self):
@@ -236,18 +236,22 @@ class OLED():
 
         self._draw_header('STORAGE', f'{slide + 1}/{total_slides}')
         if not chunk:
-            self.oled.draw_text('No storage', 8, 28, size='lg')
+            self.oled.draw_text('No storage', 39, 28, size='sm')
             return
 
         m = chunk[0]
         kind = m.get('kind', 'DISK')
         pair, pct = format_storage_pair(m['used'], m['total'])
 
-        draw_storage_icon(self.oled, kind, 6, 16)
-        self.oled.draw_text(kind, 50, 16, size='xl')
-        self.oled.draw_text(pair, 50, 32, size='lg')
-        self.oled.draw_text(f'{pct:.0f}%', 50, 46, size='md')
-        self.oled.draw_bar_graph_horizontal(pct, 6, 54, 116, 8)
+        # Same layout language as home: icon + gauge left, text + bar right
+        draw_storage_icon(self.oled, kind, 2, 20)
+        self.oled.draw_pieslice_chart(pct, 18, 38, 13, 180, 0)
+        self.oled.draw_text(f'{pct:.0f}%', 18, 38, align='center', size='sm')
+
+        info_rect = Rect(39, 17, 88, 10)
+        bar_rect = Rect(39, 29, 88, 10)
+        self.oled.draw_text(f'{kind}: {pair}', *info_rect.coord(), size='sm')
+        self.oled.draw_bar_graph_horizontal(pct, *bar_rect.coord(), *bar_rect.size())
 
     @log_error
     def draw_cpu(self):
@@ -255,63 +259,80 @@ class OLED():
         cpu_temp_c = get_cpu_temperature() or 0
         cpu_temp_f = cpu_temp_c * 9 / 5 + 32
         temp = cpu_temp_c if self.temperature_unit == 'C' else cpu_temp_f
+        LEFT = 18
 
         self._draw_header('CPU')
-        self.oled.draw_text(f'{cpu_usage:.0f}%', 64, 14, size='xl', align='center')
-        self.oled.draw_text('CPU USE', 64, 28, size='sm', align='center')
-        self.oled.draw_bar_graph_horizontal(cpu_usage, 6, 36, 116, 10)
-        self.oled.draw_text(f'{temp:.1f}{self.temperature_unit}', 64, 52, size='lg', align='center')
+        self.oled.draw_text('CPU', LEFT, 10, align='center', size='sm')
+        self.oled.draw_pieslice_chart(cpu_usage, LEFT, 30, 15, 180, 0)
+        self.oled.draw_text(f'{cpu_usage:.0f}%', LEFT, 30, align='center', size='sm')
+        self.oled.draw_text(f'{temp:.1f}{self.temperature_unit}', LEFT, 40, align='center', size='sm')
+        self.oled.draw_pieslice_chart(min(cpu_temp_c, 100), LEFT, 50, 13, 0, 180)
+
+        self.oled.draw_text(f'USE {cpu_usage:.0f}%', 39, 17, size='sm')
+        self.oled.draw_bar_graph_horizontal(cpu_usage, 39, 29, 88, 10)
+        self.oled.draw_text(f'TEMP {temp:.1f}{self.temperature_unit}', 39, 43, size='sm')
 
     @log_error
     def draw_gpu(self):
         gpu_temp = get_gpu_temperature()
         gpu_pct = get_gpu_usage_percent()
+        pct = gpu_pct if gpu_pct is not None else 0
 
         self._draw_header('GPU')
+        self.oled.draw_pieslice_chart(pct, 18, 38, 13, 180, 0)
         if gpu_pct is not None:
-            self.oled.draw_text(f'{gpu_pct:.0f}%', 64, 14, size='xl', align='center')
+            self.oled.draw_text(f'{gpu_pct:.0f}%', 18, 38, align='center', size='sm')
         else:
-            self.oled.draw_text('N/A', 64, 14, size='xl', align='center')
-        self.oled.draw_text('GPU USE', 64, 28, size='sm', align='center')
+            self.oled.draw_text('N/A', 18, 38, align='center', size='sm')
+
         if gpu_pct is not None:
-            self.oled.draw_bar_graph_horizontal(gpu_pct, 6, 36, 116, 10)
+            self.oled.draw_text(f'GPU: {gpu_pct:.0f}%', 39, 17, size='sm')
+            self.oled.draw_bar_graph_horizontal(gpu_pct, 39, 29, 88, 10)
+        else:
+            self.oled.draw_text('GPU: N/A', 39, 17, size='sm')
+
         if gpu_temp is not None:
             t = gpu_temp if self.temperature_unit == 'C' else gpu_temp * 9 / 5 + 32
-            self.oled.draw_text(f'{t:.1f}{self.temperature_unit}', 64, 52, size='lg', align='center')
+            self.oled.draw_text(f'TEMP {t:.1f}{self.temperature_unit}', 39, 43, size='sm')
         else:
-            self.oled.draw_text('TEMP N/A', 64, 52, size='md', align='center')
+            self.oled.draw_text('TEMP N/A', 39, 43, size='sm')
 
     @log_error
     def draw_fans(self):
         self._draw_header('FANS')
-        y = 18
+        y = 17
         if self.fan_control is None:
-            self.oled.draw_text('No fan data', 8, y, size='lg')
+            self.oled.draw_text('No fan data', 39, y, size='sm')
             return
         snap = self.fan_control.get_oled_snapshot()
         if snap.get('pwm_rpm') is not None:
-            self.oled.draw_text(f'{snap["pwm_rpm"]}', 64, y, size='xl', align='center')
-            self.oled.draw_text('RPM', 64, y + 16, size='md', align='center')
-            y += 34
+            self.oled.draw_text(f'RPM {snap["pwm_rpm"]}', 39, y, size='sm')
+            y += 12
         if snap.get('gpio_on') is not None:
             state = 'ON' if snap['gpio_on'] else 'OFF'
-            self.oled.draw_text(f'GPIO {state}', 8, y, size='lg')
-            y += 16
-        self.oled.draw_text(self._truncate(snap.get('mode', '?'), 14), 8, y, size='md')
+            self.oled.draw_text(f'GPIO {state}', 39, y, size='sm')
+            y += 12
+        self.oled.draw_text(f'MODE {self._truncate(snap.get("mode", "?"), 10)}', 39, y, size='sm')
 
     @log_error
     def draw_ram(self):
         memory_info = get_memory_info()
         memory_total, memory_unit = format_bytes(memory_info.total, auto_threshold=1024)
         memory_used = format_bytes(memory_info.used, memory_unit)
+        pct = memory_info.percent
 
         self._draw_header('RAM')
+        self.oled.draw_pieslice_chart(pct, 18, 38, 13, 180, 0)
+        self.oled.draw_text(f'{pct:.0f}%', 18, 38, align='center', size='sm')
+
+        info_rect = Rect(39, 17, 88, 10)
+        bar_rect = Rect(39, 29, 88, 10)
         self.oled.draw_text(
-            f'{memory_used}/{memory_total} {memory_unit}',
-            64, 18, size='lg', align='center',
+            f'RAM {memory_used}/{memory_total}{memory_unit}',
+            *info_rect.coord(),
+            size='sm',
         )
-        self.oled.draw_text(f'{memory_info.percent:.0f}%', 64, 34, size='xl', align='center')
-        self.oled.draw_bar_graph_horizontal(memory_info.percent, 6, 48, 116, 12)
+        self.oled.draw_bar_graph_horizontal(pct, *bar_rect.coord(), *bar_rect.size())
 
     @log_error
     def draw_temps(self):
@@ -319,25 +340,27 @@ class OLED():
         gpu_temp = get_gpu_temperature()
 
         self._draw_header('TEMPS')
+        y = 17
         if cpu_temp_c is not None:
             t = cpu_temp_c if self.temperature_unit == 'C' else cpu_temp_c * 9 / 5 + 32
-            self.oled.draw_text(f'CPU {t:.1f}{self.temperature_unit}', 8, 20, size='xl')
+            self.oled.draw_text(f'CPU {t:.1f}{self.temperature_unit}', 39, y, size='sm')
+            y += 12
         if gpu_temp is not None:
             t = gpu_temp if self.temperature_unit == 'C' else gpu_temp * 9 / 5 + 32
-            self.oled.draw_text(f'GPU {t:.1f}{self.temperature_unit}', 8, 42, size='xl')
+            self.oled.draw_text(f'GPU {t:.1f}{self.temperature_unit}', 39, y, size='sm')
 
     @log_error
     def draw_services(self):
         self._draw_header('TOP CPU')
         rows = get_top_processes_cpu(3)
         if not rows:
-            self.oled.draw_text('idle', 64, 28, size='xl', align='center')
+            self.oled.draw_text('(idle)', 39, 28, size='sm')
             return
-        y = 14
+        y = 17
         for row in rows:
-            name = self._truncate(row['name'], 10)
-            self.oled.draw_text(f'{name} {row["cpu_percent"]:.0f}%', 6, y, size='lg')
-            y += 16
+            name = self._truncate(row['name'], 9)
+            self.oled.draw_text(f'{name} {row["cpu_percent"]:.0f}%', 39, y, size='sm')
+            y += 12
 
     @log_error
     def draw_heart(self):
