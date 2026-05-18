@@ -57,7 +57,7 @@ def _register_control_center():
         {
             'get_config': lambda: __config__,
             'get_device_info': lambda: __device_info__,
-            'on_config_changed': __on_config_changed__,
+            'on_config_changed': lambda config: __on_config_changed__(config),
             'get_history': _control_get_history,
             'get_disks': get_disks,
             'get_ips': get_ips,
@@ -65,13 +65,14 @@ def _register_control_center():
     )
 
 
-_register_control_center()
-
 def __on_config_changed__(config):
     global __config__, __on_outside_config_changed__, __on_inside_config_changed__
     __on_outside_config_changed__(config)
     __on_inside_config_changed__(config)
     __config__ = merge_dict(__config__, config)
+
+
+_register_control_center()
 
 def on_mqtt_connected(client, userdata, flags, rc):
     global __mqtt_connected__
