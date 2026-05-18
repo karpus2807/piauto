@@ -6,7 +6,7 @@ from sf_rpi_status import \
     get_memory_info, \
     get_ips
 
-from .utils import format_bytes, format_storage_pair, log_error, DebounceRunner
+from .utils import format_bytes, format_storage_pair, log_error
 from .system_stats import (
     get_mounts_usage,
     get_combined_disk,
@@ -27,7 +27,7 @@ OLED_DEFAULT_CONFIG = {
 
 HOME_DURATION = 15
 PAGE_DURATION = 5
-MOUNTS_PER_STORAGE_SLIDE = 3
+MOUNTS_PER_STORAGE_SLIDE = 2
 
 
 class OLED():
@@ -55,7 +55,6 @@ class OLED():
         self.ip_show_next_interval = 3
         self.wake_flag = True
         self.last_ips = {}
-        self.debounce_display = DebounceRunner(self.oled.display, 0.2)
 
         self._page_sequence = []
         self._page_index = 0
@@ -240,9 +239,9 @@ class OLED():
             pair, pct = format_storage_pair(m['used'], m['total'])
             dev = self._truncate(m['short_dev'], 10)
             self.oled.draw_text(f'{mp} {dev}', 2, y)
-            self.oled.draw_text(pair, 2, y + 9)
-            self.oled.draw_bar_graph_horizontal(pct, 2, y + 18, 124, 6)
-            y += 28
+            self.oled.draw_text(pair, 2, y + 8)
+            self.oled.draw_bar_graph_horizontal(pct, 2, y + 16, 124, 5)
+            y += 22
 
     @log_error
     def draw_cpu(self):
@@ -255,7 +254,6 @@ class OLED():
         self.oled.draw_text(f'Usage  {cpu_usage:.1f}%', 4, 18)
         self.oled.draw_bar_graph_horizontal(cpu_usage, 4, 28, 120, 8)
         self.oled.draw_text(f'Temp   {temp:.1f} {self.temperature_unit}', 4, 42)
-        self.oled.draw_pieslice_chart(min(cpu_temp_c, 100), 100, 52, 18, 0, 360)
 
     @log_error
     def draw_gpu(self):
@@ -333,18 +331,16 @@ class OLED():
 
     @log_error
     def draw_heart(self):
-        self.oled.draw_dither_bg()
-        self.oled.draw_heart(64, 30, fill=1)
+        self.oled.draw_heart(64, 26, fill=1)
         self.oled.draw_text('Pironman 5', 64, 48, align='center')
         self.oled.draw_text('SunFounder', 64, 58, align='center')
 
+    @log_error
     @log_error
     def draw_current_page(self):
         page = self._current_page()
         pid = page['id']
         self.oled.clear()
-        if pid != 'home':
-            self.oled.draw_dither_bg()
 
         if pid == 'home':
             self.draw_home()
@@ -365,7 +361,7 @@ class OLED():
         elif pid == 'heart':
             self.draw_heart()
 
-        self.debounce_display()
+        self.oled.display()
 
     @log_error
     def wake(self):

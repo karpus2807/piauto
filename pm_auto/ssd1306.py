@@ -290,7 +290,9 @@ class SSD1306():
         self.font_12 = ImageFont.truetype(font_path, 12)
 
     def clear(self):
-        self.draw.rectangle((0, 0, self.width, self.height), outline=0, fill=0)
+        """Full clear of PIL buffer and SSD1306 RAM (avoids ghosting between pages)."""
+        self.image = Image.new('1', (self.width, self.height))
+        self.draw = ImageDraw.Draw(self.image)
         self.oled.clear()
 
     def draw_text(self, text, x, y, fill=1, align='left'):
@@ -329,12 +331,6 @@ class SSD1306():
         w = len(heart[0])
         h = len(heart)
         self.draw_bitmap(heart, int(cx - w / 2), int(cy - h / 2), fill=fill)
-
-    def draw_dither_bg(self):
-        """Subtle checker dither for page backgrounds."""
-        for y in range(0, self.height, 2):
-            for x in range(0, self.width, 2):
-                self.draw.point((x, y), fill=1)
 
     def draw_pieslice_chart(self, percent, x, y, r, start, end):
         '''
