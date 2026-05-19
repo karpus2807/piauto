@@ -97,7 +97,7 @@ class OledLayoutRenderer:
             icon = el.get('icon', 'disk')
             w = int(el['w']) if 'w' in el else 14
             h = int(el['h']) if 'h' in el else 14
-            if pack == 'builtin':
+            if pack in ('builtin', 'bootstrap'):
                 draw_builtin_icon(self.oled, icon, x, y, w, h, fill=1)
             else:
                 self.oled.draw.rectangle((x, y, x + w, y + h), outline=1)

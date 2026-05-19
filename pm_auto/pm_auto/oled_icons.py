@@ -306,6 +306,46 @@ BUILTIN_ICONS = {
     'home': _ICON_HOME,
 }
 
+BOOTSTRAP_ICON_ALIASES = {
+    'bi-cpu': 'cpu',
+    'bi-cpu-fill': 'cpu',
+    'bi-gpu-card': 'gpu',
+    'bi-memory': 'ram',
+    'bi-hdd': 'disk',
+    'bi-hdd-fill': 'disk',
+    'bi-hdd-network-fill': 'disk',
+    'bi-device-ssd': 'ssd',
+    'bi-device-ssd-fill': 'ssd',
+    'bi-usb-symbol': 'usb',
+    'bi-wifi': 'wifi',
+    'bi-ethernet': 'ethernet',
+    'bi-fan': 'fan',
+    'bi-thermometer-half': 'temp',
+    'bi-thermometer-high': 'temp',
+    'bi-heart': 'heart',
+    'bi-heart-fill': 'heart',
+    'bi-exclamation-triangle': 'alert',
+    'bi-exclamation-triangle-fill': 'alert',
+    'bi-lightning-charge': 'power',
+    'bi-lightning-charge-fill': 'power',
+    'bi-battery-half': 'power',
+    'bi-power': 'power',
+    'bi-clock': 'clock',
+    'bi-clock-history': 'clock',
+    'bi-server': 'server',
+    'bi-house': 'home',
+    'bi-house-fill': 'home',
+    'bi-cloud': 'server',
+    'bi-router': 'ethernet',
+    'bi-pc-display': 'server',
+    'bi-display': 'server',
+    'bi-activity': 'pulse',
+    'bi-bar-chart-fill': 'ram',
+    'bi-graph-up': 'ram',
+    'bi-shield-check': 'alert',
+    'bi-gear-fill': 'fan',
+}
+
 
 def draw_storage_icon(oled, kind, x, y, fill=1):
     icon = STORAGE_ICONS.get(kind, _ICON_SD)
@@ -326,7 +366,9 @@ def draw_bitmap_scaled(oled, bitmap, x, y, w, h, fill=1):
 
 
 def draw_builtin_icon(oled, name, x, y, w=14, h=14, fill=1):
-    bitmap = BUILTIN_ICONS.get(str(name).lower(), _ICON_SD)
+    key = str(name).lower()
+    key = BOOTSTRAP_ICON_ALIASES.get(key, key)
+    bitmap = BUILTIN_ICONS.get(key, _ICON_SD)
     # Native icons are 14x14. Old designer builds saved defaults as 16x16,
     # which made nearest-neighbour scaling look fat/broken on SSD1306.
     if int(w) <= 16 and int(h) <= 16:

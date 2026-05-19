@@ -104,7 +104,7 @@ def _validate_element(el, errors, path):
             el['w'] = _clamp_int(el['w'], 8, 64, 16)
         if 'h' in el:
             el['h'] = _clamp_int(el['h'], 8, 64, 16)
-        if pack == 'builtin':
+        if pack in ('builtin', 'bootstrap'):
             if el.get('w', 14) <= 16:
                 el['w'] = 14
             if el.get('h', 14) <= 16:
