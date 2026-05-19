@@ -677,6 +677,13 @@ function renderIconGrid() {
       const el = currentPage().elements[selIdx];
       el.pack = pack;
       el.icon = id;
+      if (pack === 'bootstrap' && (el.w || 16) <= 16 && (el.h || 16) <= 16) {
+        el.w = 16;
+        el.h = 16;
+      } else if (pack === 'builtin' && (el.w || 14) <= 16 && (el.h || 14) <= 16) {
+        el.w = 14;
+        el.h = 14;
+      }
       renderProps();
       requestRender(true);
     };

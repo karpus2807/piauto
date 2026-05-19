@@ -104,11 +104,16 @@ def _validate_element(el, errors, path):
             el['w'] = _clamp_int(el['w'], 8, 64, 16)
         if 'h' in el:
             el['h'] = _clamp_int(el['h'], 8, 64, 16)
-        if pack in ('builtin', 'bootstrap'):
+        if pack == 'builtin':
             if el.get('w', 14) <= 16:
                 el['w'] = 14
             if el.get('h', 14) <= 16:
                 el['h'] = 14
+        elif pack == 'bootstrap':
+            if el.get('w', 16) <= 16:
+                el['w'] = 16
+            if el.get('h', 16) <= 16:
+                el['h'] = 16
     elif t == 'rect':
         el['w'] = _clamp_int(el.get('w', 32), 1, OLED_WIDTH, 32)
         el['h'] = _clamp_int(el.get('h', 12), 1, OLED_HEIGHT, 12)

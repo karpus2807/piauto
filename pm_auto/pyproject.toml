@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pm_auto"
-version = "1.2.35"
+version = "1.2.36"
 authors = [
   { name="SunFounder", email="service@sunfounder.com" },
 ]
