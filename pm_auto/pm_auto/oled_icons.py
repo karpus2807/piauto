@@ -327,7 +327,9 @@ def draw_bitmap_scaled(oled, bitmap, x, y, w, h, fill=1):
 
 def draw_builtin_icon(oled, name, x, y, w=14, h=14, fill=1):
     bitmap = BUILTIN_ICONS.get(str(name).lower(), _ICON_SD)
-    if int(w) == 14 and int(h) == 14:
+    # Native icons are 14x14. Old designer builds saved defaults as 16x16,
+    # which made nearest-neighbour scaling look fat/broken on SSD1306.
+    if int(w) <= 16 and int(h) <= 16:
         oled.draw_bitmap(bitmap, x, y, fill=fill)
     else:
         draw_bitmap_scaled(oled, bitmap, x, y, w, h, fill=fill)

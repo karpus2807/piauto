@@ -644,7 +644,7 @@ function addElement(type) {
   const el = { type, x: 4, y: 4 };
   if (type === 'text') Object.assign(el, { text: 'Label', font: 8, size: 1, w: 80, h: 12 });
   if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', font: 8, size: 1, w: 80, h: 12 });
-  if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 16, h: 16 });
+  if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 14, h: 14 });
   if (type === 'rect') Object.assign(el, { w: 40, h: 20, fill: false });
   if (type === 'bar') Object.assign(el, { key: 'cpu_percent', w: 120, h: 8, max: 100 });
   if (type === 'gauge') Object.assign(el, { key: 'cpu_percent', r: 13, start: 180, end: 0 });
