@@ -118,6 +118,7 @@ CONFIG_SPEC = {
     'oled_alert_undervoltage': {'type': 'bool', 'label': 'PWR undervoltage alert'},
     'oled_sleep_timeout': {'type': 'int', 'min': 0, 'max': 600, 'label': 'OLED sleep timeout (s)'},
     'oled_designer_layout': {'type': 'json', 'label': 'OLED designer layout (JSON)'},
+    'oled_designer_enabled': {'type': 'bool', 'label': 'OLED designer render on device'},
 }
 
 UI_SECTIONS = (
@@ -185,7 +186,10 @@ def validate_key(key, value):
             pages = [str(p).strip() for p in value if str(p).strip()]
         else:
             pages = [p.strip() for p in str(value).split(',') if p.strip()]
-        bad = [p for p in pages if p not in OLED_PAGE_IDS]
+        bad = [
+            p for p in pages
+            if p not in OLED_PAGE_IDS and not str(p).startswith('custom_')
+        ]
         if bad:
             return False, f'Unknown pages: {bad}'
         return True, ','.join(pages)

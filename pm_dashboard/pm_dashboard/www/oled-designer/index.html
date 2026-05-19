@@ -24,19 +24,25 @@
     </div>
   </nav>
 
-  <div class="alert alert-info border-0 rounded-0 mb-0 py-2 small">
-    <strong>Display:</strong> 0.96″ OLED · <strong>128×64 px</strong> · aspect <strong>2:1</strong> · monochrome (1-bit).
-    Custom layouts are saved to config; live preview uses real metrics. Full custom draw on physical OLED needs a future <code>pm_auto</code> update — built-in pages in carousel still rotate today.
+  <div class="alert alert-success border-0 rounded-0 mb-0 py-2 small">
+    <strong>Phase 2:</strong> All built-in pages are editable. <strong>Apply</strong> renders on the physical OLED (128x64, 2:1).
   </div>
 
   <div class="container-fluid py-3">
     <div class="row g-3">
       <div class="col-lg-2">
         <div class="card border-secondary pm-card h-100">
-          <div class="card-header py-2"><strong class="small">Pages</strong></div>
+          <div class="card-header py-2 d-flex justify-content-between align-items-center">
+            <strong class="small">Pages</strong>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-add-page" title="Add page"><i class="bi bi-plus-lg"></i></button>
+          </div>
           <div class="card-body p-2">
-            <ul id="page-list" class="list-group list-group-flush pm-page-list mb-2"></ul>
-            <button type="button" class="btn btn-outline-primary btn-sm w-100" id="btn-add-page">+ Custom page</button>
+            <p class="small text-secondary mb-1">Built-in</p>
+            <ul id="page-list-builtin" class="list-group list-group-flush pm-page-list mb-2"></ul>
+            <p class="small text-secondary mb-1">Custom</p>
+            <ul id="page-list-custom" class="list-group list-group-flush pm-page-list mb-2"></ul>
+            <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2" id="btn-add-page-full"><i class="bi bi-plus-circle me-1"></i>Add page</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" id="btn-reset-page">Reset page to default</button>
             <hr class="border-secondary my-2"/>
             <label class="form-label small text-secondary mb-1">Carousel order</label>
             <textarea id="carousel" class="form-control form-control-sm font-monospace" rows="4"
@@ -55,6 +61,8 @@
               <button type="button" class="btn btn-outline-light" data-add="icon">Icon</button>
               <button type="button" class="btn btn-outline-light" data-add="rect">Box</button>
               <button type="button" class="btn btn-outline-light" data-add="bar">Bar</button>
+              <button type="button" class="btn btn-outline-light" data-add="gauge">Gauge</button>
+              <button type="button" class="btn btn-outline-light" data-add="heart">Heart</button>
             </div>
             <button type="button" class="btn btn-outline-danger btn-sm ms-auto" id="btn-del-el">Delete</button>
           </div>

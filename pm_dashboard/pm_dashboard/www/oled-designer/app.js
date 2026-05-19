@@ -20,13 +20,12 @@ const BOOTSTRAP_PICK = [
   'bi-hdd-network-fill', 'bi-cloud', 'bi-router', 'bi-pc-display', 'bi-display',
   'bi-activity', 'bi-bar-chart-fill', 'bi-graph-up', 'bi-clock-history',
   'bi-exclamation-triangle-fill', 'bi-shield-check', 'bi-gear-fill', 'bi-power',
-  'bi-arrow-up', 'bi-arrow-down', 'bi-droplet', 'bi-moon-stars-fill',
 ];
 
 let spec = null;
 let layout = null;
 let metrics = {};
-let pageId = 'custom_1';
+let pageId = 'home';
 let selIdx = -1;
 let drag = null;
 let toastBs = null;
@@ -59,37 +58,53 @@ function currentPage() {
   return layout.pages[pageId];
 }
 
-function metricValue(key) {
+function isBuiltin(id) {
+  return BUILTIN_PAGE_IDS.includes(id) || layout.pages[id]?.builtin;
+}
+
+function formatMetric(el) {
+  const key = el.key;
   const v = metrics[key];
-  if (v == null) return '—';
+  if (v == null || v === '') return '—';
+  if (typeof v === 'string') return v;
+  const fmt = el.format || '{}';
+  if (fmt.includes('{')) {
+    try {
+      return fmt.replace(/\{[^}]+\}/, String(v));
+    } catch (_) {
+      return String(v);
+    }
+  }
   if (key === 'gpio_fan_state') return v ? 'ON' : 'OFF';
-  if (key === 'uptime_seconds') return `${Math.floor(v / 3600)}h`;
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(1);
   return String(v);
 }
 
-function formatMetric(el) {
-  const v = metrics[el.key];
-  if (v == null) return '—';
-  try {
-    const fmt = el.format || '{}';
-    if (fmt.includes('{')) return fmt.replace(/\{[^}]+\}/, String(v));
-    return `${v}${fmt}`;
-  } catch (_) {
-    return metricValue(el.key);
-  }
+function drawGauge(cx, cy, r, pct, startDeg, endDeg) {
+  const start = (startDeg * Math.PI) / 180;
+  const end = (endDeg * Math.PI) / 180;
+  const valueEnd = start + ((end - start) * Math.min(100, Math.max(0, pct))) / 100;
+  ctx.strokeStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, start, end);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, start, valueEnd);
+  ctx.lineTo(cx, cy);
+  ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.fill();
 }
 
-function drawBuiltinIcon(name, x, y, w, h) {
-  const bi = BUILTIN_BI[name] || 'bi-square';
-  ctx.save();
+function drawHeartFull() {
   ctx.fillStyle = '#fff';
-  ctx.font = `${Math.min(w, h)}px bootstrap-icons`;
-  ctx.textBaseline = 'top';
-  ctx.fillText('\uF4CA', x, y);
-  ctx.restore();
-  ctx.strokeStyle = '#666';
-  ctx.strokeRect(x, y, w, h);
+  for (let y = 8; y < 56; y++) {
+    for (let x = 16; x < 112; x++) {
+      const dx = x < 64 ? (x - 36) / 28 : (x - 92) / 28;
+      const dy = (y - 28) / 24;
+      if (dx * dx + dy * dy < 1 && (x + y) % 3 !== 1) ctx.fillRect(x, y, 1, 1);
+    }
+  }
 }
 
 function render() {
@@ -98,7 +113,7 @@ function render() {
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = '#fff';
 
-  const els = currentPage().elements;
+  const els = currentPage().elements || [];
   els.forEach((el, i) => {
     const selected = i === selIdx;
     if (el.type === 'text') {
@@ -106,18 +121,21 @@ function render() {
       ctx.fillText(el.text || '', el.x, el.y + (el.size === 2 ? 12 : 10));
     } else if (el.type === 'metric') {
       ctx.font = el.size === 2 ? 'bold 12px monospace' : '10px monospace';
-      ctx.fillText(formatMetric(el), el.x, el.y + (el.size === 2 ? 12 : 10));
-    } else if (el.type === 'icon') {
-      if (el.pack === 'bootstrap') {
-        ctx.strokeStyle = '#888';
-        ctx.strokeRect(el.x, el.y, el.w || 16, el.h || 16);
-        ctx.font = '8px monospace';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText((el.icon || '').replace('bi-', '').slice(0, 4), el.x, el.y + 6);
+      const t = formatMetric(el);
+      if (el.key === 'ip_line') {
+        ctx.fillStyle = '#000';
+        ctx.fillText(t, el.x, el.y + 8);
         ctx.fillStyle = '#fff';
       } else {
-        drawBuiltinIcon(el.icon, el.x, el.y, el.w || 16, el.h || 16);
+        ctx.fillText(t, el.x, el.y + (el.size === 2 ? 12 : 10));
       }
+    } else if (el.type === 'icon') {
+      ctx.strokeStyle = '#888';
+      ctx.strokeRect(el.x, el.y, el.w || 16, el.h || 16);
+      ctx.font = '8px monospace';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText((el.icon || 'ic').slice(0, 4), el.x + 2, el.y + 8);
+      ctx.fillStyle = '#fff';
     } else if (el.type === 'rect') {
       if (el.fill) ctx.fillRect(el.x, el.y, el.w, el.h);
       else ctx.strokeRect(el.x, el.y, el.w, el.h);
@@ -126,6 +144,11 @@ function render() {
       const fill = (el.w * pct) / (el.max || 100);
       ctx.strokeRect(el.x, el.y, el.w, el.h);
       ctx.fillRect(el.x + 1, el.y + 1, Math.max(0, fill - 2), el.h - 2);
+    } else if (el.type === 'gauge') {
+      const pct = Number(metrics[el.key]) || 0;
+      drawGauge(el.x, el.y, el.r || 13, pct, el.start ?? 180, el.end ?? 0);
+    } else if (el.type === 'heart') {
+      drawHeartFull();
     }
     if (selected) {
       ctx.strokeStyle = '#3d8bfd';
@@ -140,13 +163,18 @@ function bounds(el) {
   if (el.type === 'bar') return { x: el.x, y: el.y, w: el.w, h: el.h };
   if (el.type === 'rect') return { x: el.x, y: el.y, w: el.w, h: el.h };
   if (el.type === 'icon') return { x: el.x, y: el.y, w: el.w || 16, h: el.h || 16 };
+  if (el.type === 'gauge') {
+    const r = el.r || 13;
+    return { x: el.x - r, y: el.y - r, w: r * 2, h: r * 2 };
+  }
+  if (el.type === 'heart') return { x: 0, y: 0, w: 128, h: 64 };
   const w = el.w || 80;
   const h = el.size === 2 ? 14 : 12;
   return { x: el.x, y: el.y, w, h };
 }
 
 function hitTest(mx, my) {
-  const els = currentPage().elements;
+  const els = currentPage().elements || [];
   for (let i = els.length - 1; i >= 0; i--) {
     const b = bounds(els[i]);
     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) return i;
@@ -162,24 +190,70 @@ function canvasXY(e) {
   };
 }
 
+function makePageBtn(id, listEl) {
+  const p = layout.pages[id];
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center' +
+    (id === pageId ? ' active' : '');
+  btn.innerHTML = `<span>${p.name || id}</span>${isBuiltin(id) ? '<span class="badge text-bg-secondary">built-in</span>' : ''}`;
+  btn.onclick = () => {
+    pageId = id;
+    selIdx = -1;
+    renderPageList();
+    renderProps();
+    render();
+  };
+  listEl.appendChild(btn);
+}
+
 function renderPageList() {
-  const ul = document.getElementById('page-list');
-  ul.innerHTML = '';
-  Object.keys(layout.pages).forEach((id) => {
-    const li = document.createElement('button');
-    li.type = 'button';
-    li.className = 'list-group-item list-group-item-action' + (id === pageId ? ' active' : '');
-    li.textContent = layout.pages[id].name || id;
-    li.onclick = () => {
-      pageId = id;
-      selIdx = -1;
-      renderPageList();
-      renderProps();
-      render();
-    };
-    ul.appendChild(li);
+  const builtinEl = document.getElementById('page-list-builtin');
+  const customEl = document.getElementById('page-list-custom');
+  const legacyEl = document.getElementById('page-list');
+  if (legacyEl) legacyEl.innerHTML = '';
+  if (!builtinEl) return;
+  builtinEl.innerHTML = '';
+  customEl.innerHTML = '';
+  BUILTIN_PAGE_IDS.forEach((id) => {
+    if (layout.pages[id]) makePageBtn(id, builtinEl);
   });
+  Object.keys(layout.pages)
+    .filter((id) => !BUILTIN_PAGE_IDS.includes(id))
+    .sort()
+    .forEach((id) => makePageBtn(id, customEl));
   document.getElementById('carousel').value = (layout.carousel || []).join(',');
+}
+
+function addCustomPage() {
+  let n = 1;
+  while (layout.pages[`custom_${n}`]) n++;
+  const id = `custom_${n}`;
+  layout.pages[id] = { id, name: `Custom ${n}`, duration: 5, builtin: false, elements: [] };
+  if (!layout.carousel.includes(id)) layout.carousel.push(id);
+  pageId = id;
+  renderPageList();
+  renderProps();
+  render();
+  toast(`Added ${id}`);
+}
+
+async function resetCurrentPage() {
+  if (!isBuiltin(pageId)) {
+    toast('Only built-in pages can be reset', true);
+    return;
+  }
+  try {
+    const data = await api(`/reset-oled-page/${pageId}`);
+    layout.pages[pageId] = data.page;
+    selIdx = -1;
+    renderPageList();
+    renderProps();
+    render();
+    toast(`Reset ${pageId}`);
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 function renderProps() {
@@ -187,7 +261,7 @@ function renderProps() {
   if (selIdx < 0) {
     const p = currentPage();
     box.innerHTML = `
-      <p class="small text-secondary">Page settings</p>
+      <p class="small text-secondary">Page: <strong>${pageId}</strong>${isBuiltin(pageId) ? ' (built-in)' : ''}</p>
       <label class="form-label small">Name</label>
       <input type="text" class="form-control form-control-sm mb-2" id="p-name" value="${p.name || ''}"/>
       <label class="form-label small">Duration (s)</label>
@@ -198,8 +272,10 @@ function renderProps() {
   }
   const el = currentPage().elements[selIdx];
   let html = `<p class="small mb-2"><span class="badge text-bg-primary">${el.type}</span></p>`;
-  html += row('X', `<input type="number" class="form-control form-control-sm" data-k="x" min="0" max="127" value="${el.x}"/>`);
-  html += row('Y', `<input type="number" class="form-control form-control-sm" data-k="y" min="0" max="63" value="${el.y}"/>`);
+  if (el.type !== 'heart') {
+    html += row('X', `<input type="number" class="form-control form-control-sm" data-k="x" min="0" max="127" value="${el.x}"/>`);
+    html += row('Y', `<input type="number" class="form-control form-control-sm" data-k="y" min="0" max="63" value="${el.y}"/>`);
+  }
   if (el.type === 'text') {
     html += row('Text', `<input type="text" class="form-control form-control-sm" data-k="text" value="${el.text || ''}"/>`);
     html += row('Size', `<select class="form-select form-select-sm" data-k="size"><option value="1">Small</option><option value="2">Large</option></select>`);
@@ -207,7 +283,7 @@ function renderProps() {
   if (el.type === 'metric') {
     html += row('Metric', `<select class="form-select form-select-sm" data-k="key">${(spec.metrics || []).map((k) =>
       `<option value="${k}"${k === el.key ? ' selected' : ''}>${k}</option>`).join('')}</select>`);
-    html += row('Format', `<input type="text" class="form-control form-control-sm" data-k="format" value="${el.format || '{:.1f}'}"/>`);
+    html += row('Format', `<input type="text" class="form-control form-control-sm" data-k="format" value="${el.format || '{}'}"/>`);
     html += row('Size', `<select class="form-select form-select-sm" data-k="size"><option value="1">Small</option><option value="2">Large</option></select>`);
   }
   if (el.type === 'icon') {
@@ -228,12 +304,22 @@ function renderProps() {
     html += row('H', `<input type="number" class="form-control form-control-sm" data-k="h" value="${el.h}"/>`);
     html += row('Max', `<input type="number" class="form-control form-control-sm" data-k="max" value="${el.max || 100}"/>`);
   }
+  if (el.type === 'gauge') {
+    html += row('Metric', `<select class="form-select form-select-sm" data-k="key">${(spec.metrics || []).map((k) =>
+      `<option value="${k}"${k === el.key ? ' selected' : ''}>${k}</option>`).join('')}</select>`);
+    html += row('Radius', `<input type="number" class="form-control form-control-sm" data-k="r" min="4" max="24" value="${el.r || 13}"/>`);
+    html += row('Start', `<input type="number" class="form-control form-control-sm" data-k="start" value="${el.start ?? 180}"/>`);
+    html += row('End', `<input type="number" class="form-control form-control-sm" data-k="end" value="${el.end ?? 0}"/>`);
+  }
+  if (el.type === 'heart') {
+    html += row('Margin', `<input type="number" class="form-control form-control-sm" data-k="margin" min="0" max="20" value="${el.margin ?? 7}"/>`);
+  }
   box.innerHTML = html;
   box.querySelectorAll('[data-k]').forEach((inp) => {
     const k = inp.dataset.k;
     const handler = () => {
       let v = inp.type === 'checkbox' ? inp.checked : inp.value;
-      if (['x', 'y', 'w', 'h', 'size', 'max'].includes(k)) v = Number(v);
+      if (['x', 'y', 'w', 'h', 'size', 'max', 'r', 'start', 'end', 'margin'].includes(k)) v = Number(v);
       el[k] = v;
       render();
     };
@@ -250,10 +336,12 @@ function row(label, input) {
 function addElement(type) {
   const el = { type, x: 4, y: 4 };
   if (type === 'text') Object.assign(el, { text: 'Label', size: 1, w: 80 });
-  if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{:.1f} C', size: 2, w: 80 });
+  if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', size: 1, w: 80 });
   if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 16, h: 16 });
   if (type === 'rect') Object.assign(el, { w: 40, h: 20, fill: false });
   if (type === 'bar') Object.assign(el, { key: 'cpu_percent', w: 120, h: 8, max: 100 });
+  if (type === 'gauge') Object.assign(el, { key: 'cpu_percent', r: 13, start: 180, end: 0 });
+  if (type === 'heart') Object.assign(el, { margin: 7 });
   currentPage().elements.push(el);
   selIdx = currentPage().elements.length - 1;
   renderProps();
@@ -270,11 +358,9 @@ function renderIconGrid() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.title = id;
-    if (pack === 'bootstrap') {
-      btn.innerHTML = `<i class="bi ${id}"></i>`;
-    } else {
-      btn.innerHTML = `<i class="bi ${BUILTIN_BI[id] || 'bi-square'}"></i>`;
-    }
+    btn.innerHTML = pack === 'bootstrap'
+      ? `<i class="bi ${id}"></i>`
+      : `<i class="bi ${BUILTIN_BI[id] || 'bi-square'}"></i>`;
     btn.onclick = () => {
       if (selIdx < 0 || currentPage().elements[selIdx].type !== 'icon') {
         toast('Select an icon element first', true);
@@ -282,7 +368,7 @@ function renderIconGrid() {
       }
       const el = currentPage().elements[selIdx];
       el.pack = pack;
-      el.icon = pack === 'bootstrap' ? id : id;
+      el.icon = id;
       renderProps();
       render();
     };
@@ -295,7 +381,10 @@ canvas.addEventListener('mousedown', (e) => {
   const hit = hitTest(x, y);
   if (hit >= 0) {
     selIdx = hit;
-    drag = { ox: x - currentPage().elements[hit].x, oy: y - currentPage().elements[hit].y };
+    const el = currentPage().elements[hit];
+    if (el.type !== 'heart') {
+      drag = { ox: x - el.x, oy: y - el.y };
+    }
     renderProps();
     render();
   } else {
@@ -329,25 +418,19 @@ document.getElementById('btn-del-el').onclick = () => {
   render();
 };
 
-document.getElementById('btn-add-page').onclick = () => {
-  let n = 1;
-  while (layout.pages[`custom_${n}`]) n++;
-  const id = `custom_${n}`;
-  layout.pages[id] = { id, name: `Custom ${n}`, duration: 5, elements: [] };
-  pageId = id;
-  renderPageList();
-  render();
-};
+document.getElementById('btn-add-page').onclick = addCustomPage;
+document.getElementById('btn-add-page-full').onclick = addCustomPage;
+document.getElementById('btn-reset-page').onclick = resetCurrentPage;
 
 document.getElementById('btn-apply').onclick = async () => {
   const carousel = document.getElementById('carousel').value
     .split(',').map((s) => s.trim()).filter(Boolean);
-  layout.carousel = carousel.length ? carousel : ['home', pageId, 'heart'];
+  layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
   document.getElementById('save-status').textContent = 'Saving…';
   try {
     await api('/apply-oled-layout', 'POST', { layout });
     document.getElementById('save-status').textContent = 'Applied';
-    toast('Layout saved to device config');
+    toast('Layout applied — OLED will use designer pages');
   } catch (e) {
     document.getElementById('save-status').textContent = '';
     toast(e.message, true);
@@ -363,7 +446,7 @@ async function init() {
     layout = JSON.parse(JSON.stringify(spec.layout));
     document.getElementById('spec-badge').textContent =
       `${spec.width}×${spec.height} · ${spec.aspect}`;
-    pageId = Object.keys(layout.pages)[0] || 'custom_1';
+    pageId = (layout.carousel && layout.carousel[0]) || 'home';
     renderPageList();
     renderIconGrid();
     renderProps();
