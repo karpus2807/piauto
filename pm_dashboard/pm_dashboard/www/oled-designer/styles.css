@@ -20,7 +20,9 @@ body.pm-body {
   height: 256px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  image-rendering: -moz-crisp-edges;
   cursor: crosshair;
+  display: block;
 }
 
 .pm-page-list .list-group-item {

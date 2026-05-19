@@ -30,9 +30,10 @@ let selIdx = -1;
 let drag = null;
 let toastBs = null;
 let previewBusy = false;
-/** Static editor preview only — no live metrics / no server PNG overlay while editing */
-let useHardwarePreview = false;
+/** Sharp preview via server PNG (real OLED fonts); no live polling */
+let useHardwarePreview = true;
 let metricsPollTimer = null;
+let renderDebounceTimer = null;
 
 const STATIC_METRICS = {
   cpu_temperature: 52.3,
@@ -68,6 +69,9 @@ const STATIC_METRICS = {
 
 const canvas = document.getElementById('oled');
 const ctx = canvas ? canvas.getContext('2d') : null;
+if (ctx) {
+  ctx.imageSmoothingEnabled = false;
+}
 const Z_ORDER = { rect: 0, bar: 1, gauge: 2, icon: 3, text: 4, metric: 5, heart: 6 };
 const FONT_PX = [8, 10, 12, 14];
 const RESIZE_HANDLES = ['nw', 'ne', 'sw', 'se'];
@@ -289,13 +293,13 @@ function drawHeartFull() {
 
 function drawTextOled(text, el, align, fillLight) {
   const px = fontPx(el);
-  ctx.font = `${px}px sans-serif`;
+  ctx.font = `${px}px monospace`;
   ctx.textBaseline = 'top';
   ctx.fillStyle = fillLight ? '#000' : '#fff';
-  const ty = el.y;
-  let tx = el.x;
-  if (align === 'center') tx = el.x - ctx.measureText(text).width / 2;
-  else if (align === 'right') tx = el.x - ctx.measureText(text).width;
+  const ty = Math.round(el.y);
+  let tx = Math.round(el.x);
+  if (align === 'center') tx = Math.round(el.x - ctx.measureText(text).width / 2);
+  else if (align === 'right') tx = Math.round(el.x - ctx.measureText(text).width);
   ctx.fillText(text, tx, ty);
   ctx.fillStyle = '#fff';
 }
@@ -396,18 +400,33 @@ function renderCanvasFallback() {
 }
 
 async function render() {
-  renderCanvasFallback();
   if (useHardwarePreview) {
-    await renderHardwarePreview();
+    const ok = await renderHardwarePreview();
+    if (ok) return;
   }
+  renderCanvasFallback();
+}
+
+function requestRender(immediate = false) {
+  if (immediate) {
+    if (renderDebounceTimer) clearTimeout(renderDebounceTimer);
+    renderDebounceTimer = null;
+    return render();
+  }
+  if (renderDebounceTimer) clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(() => {
+    renderDebounceTimer = null;
+    render();
+  }, 400);
+}
+
+function renderQuick() {
+  renderCanvasFallback();
 }
 
 async function previewOnDevice() {
-  const prev = useHardwarePreview;
-  useHardwarePreview = true;
-  await renderHardwarePreview();
-  useHardwarePreview = prev;
-  toast('Device-calibrated preview (matches physical OLED)');
+  await requestRender(true);
+  toast('Preview updated (real OLED fonts)');
 }
 
 function stopLivePreview() {
@@ -471,7 +490,7 @@ function makePageBtn(id, listEl) {
     selIdx = -1;
     renderPageList();
     renderProps();
-    render();
+    requestRender(true);
   };
   listEl.appendChild(btn);
 }
@@ -508,7 +527,7 @@ function addCustomPage() {
   pageId = id;
   renderPageList();
   renderProps();
-  render();
+  requestRender(true);
   toast(`Added ${id}`);
 }
 
@@ -523,7 +542,7 @@ async function resetCurrentPage() {
     selIdx = -1;
     renderPageList();
     renderProps();
-    render();
+    requestRender(true);
     toast(`Reset ${pageId}`);
   } catch (e) {
     toast(e.message, true);
@@ -608,7 +627,7 @@ function renderProps() {
       if ((k === 'w' || k === 'h') && (el.type === 'text' || el.type === 'metric')) {
         setElementFont(el, fontFromBoxHeight(el.h));
       }
-      render();
+      requestRender();
       if (k === 'font' || k === 'w' || k === 'h') renderProps();
     };
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', handler);
@@ -634,7 +653,7 @@ function addElement(type) {
   currentPage().elements.push(el);
   selIdx = currentPage().elements.length - 1;
   renderProps();
-  render();
+  requestRender(true);
 }
 
 function renderIconGrid() {
@@ -659,7 +678,7 @@ function renderIconGrid() {
       el.pack = pack;
       el.icon = id;
       renderProps();
-      render();
+      requestRender(true);
     };
     grid.appendChild(btn);
   });
@@ -676,7 +695,7 @@ if (canvas) canvas.addEventListener('mousedown', (e) => {
       handle: rh,
       start: { x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h },
     };
-    render();
+    requestRender(true);
     return;
   }
   const hit = hitTest(x, y);
@@ -687,11 +706,11 @@ if (canvas) canvas.addEventListener('mousedown', (e) => {
       drag = { mode: 'move', ox: x - el.x, oy: y - el.y };
     }
     renderProps();
-    render();
+    requestRender(true);
   } else {
     selIdx = -1;
     renderProps();
-    render();
+    requestRender(true);
   }
 });
 
@@ -706,16 +725,23 @@ if (canvas) canvas.addEventListener('mousemove', (e) => {
   if (drag.mode === 'resize') {
     applyResize(el, drag.handle, x, y, drag.start);
     renderProps();
-    render();
+    renderQuick();
     return;
   }
   el.x = clamp(Math.round(x - drag.ox), 0, 127);
   el.y = clamp(Math.round(y - drag.oy), 0, 63);
-  render();
+  renderQuick();
 });
 
-if (canvas) canvas.addEventListener('mouseup', () => { drag = null; if (canvas) canvas.style.cursor = 'crosshair'; });
-if (canvas) canvas.addEventListener('mouseleave', () => { drag = null; if (canvas) canvas.style.cursor = 'crosshair'; });
+function endDrag() {
+  const was = drag;
+  drag = null;
+  if (canvas) canvas.style.cursor = 'crosshair';
+  if (was) requestRender(true);
+}
+
+if (canvas) canvas.addEventListener('mouseup', endDrag);
+if (canvas) canvas.addEventListener('mouseleave', endDrag);
 
 function wireUi() {
   document.querySelectorAll('[data-add]').forEach((btn) => {
@@ -727,7 +753,7 @@ function wireUi() {
     currentPage().elements.splice(selIdx, 1);
     selIdx = -1;
     renderProps();
-    render();
+    requestRender(true);
   });
 
   onClick('btn-add-page', addCustomPage);
@@ -805,7 +831,7 @@ async function init() {
     renderPageList();
     renderIconGrid();
     renderProps();
-    await render();
+    await requestRender(true);
   } catch (e) {
     showInitError(e.message);
   }

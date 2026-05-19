@@ -39,6 +39,7 @@ __mqtt_connected__ = False
 
 __on_outside_config_changed__ = lambda config: None
 __on_inside_config_changed__ = lambda config: None
+__pm_auto_runtime_update__ = None
 
 
 def _control_get_history(n=1):
@@ -54,6 +55,9 @@ def _register_control_center():
         'get_device_info': lambda: __device_info__,
         'on_config_changed': lambda config: __on_config_changed__(config),
         'apply_system_runtime': lambda patch: __on_outside_config_changed__({'system': patch}),
+        'pm_auto_runtime_update': lambda patch: (
+            __pm_auto_runtime_update__(patch) if __pm_auto_runtime_update__ else None
+        ),
         'get_history': _control_get_history,
         'get_disks': get_disks,
         'get_ips': get_ips,
@@ -496,6 +500,11 @@ class PMDashboard():
     def set_on_config_changed(self, func):
         global __on_outside_config_changed__
         __on_outside_config_changed__ = func
+
+    @log_error
+    def set_pm_auto_runtime(self, func):
+        global __pm_auto_runtime_update__
+        __pm_auto_runtime_update__ = func
 
     @log_error
     def run(self):
