@@ -20,7 +20,7 @@ from .oled_designer_schema import (
     merge_layout_with_templates,
     validate_layout,
 )
-from .oled_page_templates import BUILTIN_PAGE_TEMPLATES
+from .oled_page_templates import BUILTIN_PAGE_TEMPLATES, build_default_layout
 from .oled_preview_render import render_oled_page_png
 
 
@@ -53,6 +53,16 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
                 layout = merge_layout_with_templates(result)
         if layout is None:
             layout = DEFAULT_LAYOUT
+        if not isinstance(layout.get('pages'), dict) or len(layout['pages']) < len(BUILTIN_PAGE_TEMPLATES):
+            import copy
+            merged = build_default_layout()
+            merged['carousel'] = layout.get('carousel') or merged['carousel']
+            for pid, page in (layout.get('pages') or {}).items():
+                if isinstance(page, dict) and page.get('elements'):
+                    merged['pages'][pid] = copy.deepcopy(page)
+                elif isinstance(page, dict) and str(pid).startswith('custom_'):
+                    merged['pages'][pid] = copy.deepcopy(page)
+            layout = merged
         return {
             'status': True,
             'data': {

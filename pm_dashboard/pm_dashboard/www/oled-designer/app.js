@@ -33,7 +33,7 @@ let previewBusy = false;
 let useHardwarePreview = true;
 
 const canvas = document.getElementById('oled');
-const ctx = canvas.getContext('2d');
+const ctx = canvas ? canvas.getContext('2d') : null;
 const Z_ORDER = { rect: 0, bar: 1, gauge: 2, icon: 3, text: 4, metric: 5, heart: 6 };
 
 async function api(path, method = 'GET', body) {
@@ -143,7 +143,7 @@ function drawSelectionOverlay() {
 }
 
 async function renderHardwarePreview() {
-  if (previewBusy) return false;
+  if (!ctx || previewBusy) return false;
   previewBusy = true;
   try {
     const res = await fetch(API + '/oled-preview-png', {
@@ -170,6 +170,7 @@ async function renderHardwarePreview() {
 }
 
 function renderCanvasFallback() {
+  if (!ctx) return;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, 128, 64);
   ctx.fillStyle = '#fff';
@@ -180,7 +181,6 @@ function renderCanvasFallback() {
     .map((el, i) => ({ el, i }))
     .sort((a, b) => (Z_ORDER[a.el.type] ?? 5) - (Z_ORDER[b.el.type] ?? 5));
   els.forEach(({ el, i }) => {
-    const selected = i === selIdx;
     const selected = i === selIdx;
     if (el.type === 'text') {
       drawTextOled(el.text || '', el.x, el.y, el.align || 'left', false);
@@ -217,11 +217,25 @@ function renderCanvasFallback() {
 }
 
 async function render() {
-  if (useHardwarePreview) {
-    const ok = await renderHardwarePreview();
-    if (ok) return;
-  }
   renderCanvasFallback();
+  if (useHardwarePreview) {
+    await renderHardwarePreview();
+  }
+}
+
+function ensureLayout() {
+  if (!layout || typeof layout !== 'object') {
+    layout = { version: 1, pages: {}, carousel: [...BUILTIN_PAGE_IDS, 'heart'] };
+  }
+  if (!layout.pages || typeof layout.pages !== 'object') layout.pages = {};
+  BUILTIN_PAGE_IDS.forEach((id) => {
+    if (!layout.pages[id]) {
+      layout.pages[id] = { id, name: id, duration: 5, builtin: true, elements: [] };
+    }
+  });
+  if (!Array.isArray(layout.carousel) || !layout.carousel.length) {
+    layout.carousel = [...BUILTIN_PAGE_IDS];
+  }
 }
 
 function bounds(el) {
@@ -273,7 +287,7 @@ function makePageBtn(id, listEl) {
 }
 
 function renderPageList() {
-  if (!layout || !layout.pages) return;
+  ensureLayout();
   const builtinEl = document.getElementById('page-list-builtin');
   const customEl = document.getElementById('page-list-custom');
   const legacyEl = document.getElementById('page-list');
@@ -281,9 +295,7 @@ function renderPageList() {
   if (builtinEl && customEl) {
     builtinEl.innerHTML = '';
     customEl.innerHTML = '';
-    BUILTIN_PAGE_IDS.forEach((id) => {
-      if (layout.pages[id]) makePageBtn(id, builtinEl);
-    });
+    BUILTIN_PAGE_IDS.forEach((id) => makePageBtn(id, builtinEl));
     Object.keys(layout.pages)
       .filter((id) => !BUILTIN_PAGE_IDS.includes(id))
       .sort()
@@ -521,7 +533,7 @@ function wireUi() {
 function showInitError(msg) {
   const box = document.getElementById('props');
   if (box) {
-    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.2+, hard refresh (Ctrl+Shift+R).</p>`;
+    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.3+, hard refresh (Ctrl+Shift+R).</p>`;
   }
   toast('Init failed: ' + msg, true);
 }
@@ -530,7 +542,8 @@ async function init() {
   wireUi();
   try {
     spec = await api('/get-oled-spec');
-    layout = JSON.parse(JSON.stringify(spec.layout));
+    layout = JSON.parse(JSON.stringify(spec.layout || {}));
+    ensureLayout();
     const badge = document.getElementById('spec-badge');
     if (badge) badge.textContent = `${spec.width}×${spec.height} · ${spec.aspect}`;
     pageId = (layout.carousel && layout.carousel[0]) || 'home';
