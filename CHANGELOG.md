@@ -4,6 +4,25 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [OLED Designer Phase 2] - 2026-05-19
+
+### Added
+- One-command Pironman 5 installer: `install-oled-designer.sh`
+- Web OLED Designer at `/oled-designer`
+- Editable built-in pages and custom OLED pages
+- **Test on OLED**: render the current unsaved page on the physical OLED for 5 seconds
+- **Apply to device**: persist designer layout and carousel order
+- Native 14×14 monochrome built-in OLED icon set
+- Bootstrap icon mapping to OLED-safe monochrome bitmaps
+- Icon animations: `none`, `blink`, `pulse`, `spin`
+
+### Fixed
+- Dashboard script init failures that caused blank page lists/canvas/icons
+- Designer preview calibration against the 128×64 SSD1306 display
+- Repeated **Test on OLED** presses now retrigger the physical preview
+- `pm_auto` package metadata now matches `pm_auto.__version__` so pip upgrades correctly
+- Built-in and Bootstrap icon sizing to avoid stretched/fat pixels on OLED
+
 ## [1.2.24] - 2026-05-18
 
 ### Added (Tier 4)

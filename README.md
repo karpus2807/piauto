@@ -33,6 +33,30 @@ From [pironman5](https://github.com/sunfounder/pironman5) installer — `install
 sudo python3 install.py
 ```
 
+## One-command OLED Designer install / upgrade
+
+On a Pironman 5 Pi with the standard venv at `/opt/pironman5/venv`, run:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install-oled-designer.sh)
+```
+
+This upgrades both packages from this repo and restarts `pironman5.service`:
+
+- `pm_dashboard` (Control Center + OLED Designer)
+- `pm_auto` (physical OLED renderer, Test on OLED, icon/animation support)
+
+After it finishes, hard refresh the browser (`Ctrl+Shift+R`) on `/oled-designer`.
+
+If your venv or service name is custom:
+
+```bash
+PIRONMAN5_VENV_PIP=/path/to/pip3 \
+PIRONMAN5_VENV_PY=/path/to/python3 \
+PIRONMAN5_SERVICE=pironman5 \
+bash <(curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install-oled-designer.sh)
+```
+
 ## Upgrade on device
 
 ```bash
@@ -133,6 +157,18 @@ Advanced **Control Center**: `http://<pi-ip>:34001/control`
 - Full `config.json` `system` keys via UI (RGB, fans, OLED, alerts)
 - Presets: Quiet Desktop, Performance, Server, Night, etc.
 - Uses `dashboard_stats` for hostname / uptime / free storage on live bar
+
+## OLED Designer
+
+Open: `http://<pi-ip>:34001/oled-designer`
+
+- Edit all built-in OLED pages and custom pages in a 128×64 canvas.
+- Static/sharp preview uses the same OLED render path as hardware.
+- **Test on OLED** shows the current unsaved page on the physical OLED for 5 seconds.
+- **Apply to device** saves the layout and carousel order permanently.
+- Built-in icons render as native 14×14 monochrome OLED bitmaps.
+- Bootstrap icon picks are mapped to OLED-safe monochrome bitmaps.
+- Icon animations: `none`, `blink`, `pulse`, `spin`.
 
 Install from this repo’s `pm_dashboard/` folder (see root `install.py`).
 
