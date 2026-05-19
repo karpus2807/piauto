@@ -99,15 +99,35 @@ function setElementFont(el, px) {
   }
 }
 
-function ensureElementBox(el) {
+/** Read-only defaults for handles/hit-test — does not change saved layout */
+function layoutDims(el) {
+  if (!el) return { w: 80, h: 12 };
+  if (el.type === 'text' || el.type === 'metric') {
+    return {
+      w: el.w || 80,
+      h: el.h || (el.font ? snapFont(el.font) + 4 : (el.size === 2 ? 14 : 12)),
+    };
+  }
+  if (el.type === 'icon') return { w: el.w || 14, h: el.h || 14 };
+  if (el.type === 'bar') return { w: el.w || 120, h: el.h || 8 };
+  if (el.type === 'rect') return { w: el.w || 40, h: el.h || 20 };
+  if (el.type === 'gauge') {
+    const r = el.r || 13;
+    return { w: r * 2, h: r * 2 };
+  }
+  return { w: 80, h: 12 };
+}
+
+/** Only for newly added elements (user resize sets fields directly) */
+function initNewElementBox(el) {
   if (!el || el.type === 'heart') return;
   if (el.type === 'text' || el.type === 'metric') {
-    if (el.font == null) setElementFont(el, el.size === 2 ? 10 : 8);
+    if (el.font == null) setElementFont(el, 8);
     if (!el.w) el.w = 80;
     if (!el.h) el.h = fontPx(el) + 4;
   } else if (el.type === 'icon') {
-    if (!el.w) el.w = 16;
-    if (!el.h) el.h = 16;
+    if (!el.w) el.w = 14;
+    if (!el.h) el.h = 14;
   } else if (el.type === 'rect' || el.type === 'bar') {
     if (!el.w) el.w = el.type === 'bar' ? 120 : 40;
     if (!el.h) el.h = el.type === 'bar' ? 8 : 20;
@@ -267,13 +287,11 @@ function drawHeartFull() {
 }
 
 function drawTextOled(text, el, align, fillLight) {
-  ensureElementBox(el);
   const px = fontPx(el);
   ctx.font = `${px}px sans-serif`;
   ctx.textBaseline = 'top';
   ctx.fillStyle = fillLight ? '#000' : '#fff';
-  const boxH = el.h || px + 4;
-  const ty = el.y + Math.max(0, Math.floor((boxH - px) / 2));
+  const ty = el.y;
   let tx = el.x;
   if (align === 'center') tx = el.x - ctx.measureText(text).width / 2;
   else if (align === 'right') tx = el.x - ctx.measureText(text).width;
@@ -338,7 +356,6 @@ function renderCanvasFallback() {
     .sort((a, b) => (Z_ORDER[a.el.type] ?? 5) - (Z_ORDER[b.el.type] ?? 5));
   els.forEach(({ el, i }) => {
     const selected = i === selIdx;
-    ensureElementBox(el);
     if (el.type === 'text') {
       drawTextOled(el.text || '', el, el.align || 'left', false);
     } else if (el.type === 'metric') {
@@ -384,6 +401,14 @@ async function render() {
   }
 }
 
+async function previewOnDevice() {
+  const prev = useHardwarePreview;
+  useHardwarePreview = true;
+  await renderHardwarePreview();
+  useHardwarePreview = prev;
+  toast('Device-calibrated preview (matches physical OLED)');
+}
+
 function stopLivePreview() {
   if (metricsPollTimer) {
     clearInterval(metricsPollTimer);
@@ -407,18 +432,13 @@ function ensureLayout() {
 }
 
 function bounds(el) {
-  ensureElementBox(el);
-  if (el.type === 'bar' || el.type === 'rect') return { x: el.x, y: el.y, w: el.w, h: el.h };
-  if (el.type === 'icon') return { x: el.x, y: el.y, w: el.w || 16, h: el.h || 16 };
+  if (el.type === 'heart') return { x: 0, y: 0, w: 128, h: 64 };
   if (el.type === 'gauge') {
     const r = el.r || 13;
     return { x: el.x - r, y: el.y - r, w: r * 2, h: r * 2 };
   }
-  if (el.type === 'heart') return { x: 0, y: 0, w: 128, h: 64 };
-  if (el.type === 'text' || el.type === 'metric') {
-    return { x: el.x, y: el.y, w: el.w || 80, h: el.h || fontPx(el) + 4 };
-  }
-  return { x: el.x, y: el.y, w: 80, h: 12 };
+  const d = layoutDims(el);
+  return { x: el.x, y: el.y, w: d.w, h: d.h };
 }
 
 function hitTest(mx, my) {
@@ -530,29 +550,26 @@ function renderProps() {
     html += row('Y', `<input type="number" class="form-control form-control-sm" data-k="y" min="0" max="63" value="${el.y}"/>`);
   }
   if (el.type === 'text') {
-    ensureElementBox(el);
     html += row('Text', `<input type="text" class="form-control form-control-sm" data-k="text" value="${el.text || ''}"/>`);
     html += row('Font (px)', `<input type="number" class="form-control form-control-sm" data-k="font" min="8" max="14" step="2" value="${fontPx(el)}"/>`);
-    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w || 80}"/>`);
-    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h || 12}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w ?? layoutDims(el).w}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h ?? layoutDims(el).h}"/>`);
     html += row('Align', `<select class="form-select form-select-sm" data-k="align"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>`);
   }
   if (el.type === 'metric') {
-    ensureElementBox(el);
     html += row('Metric', `<select class="form-select form-select-sm" data-k="key">${(spec.metrics || []).map((k) =>
       `<option value="${k}"${k === el.key ? ' selected' : ''}>${k}</option>`).join('')}</select>`);
     html += row('Format', `<input type="text" class="form-control form-control-sm" data-k="format" value="${el.format || '{}'}"/>`);
     html += row('Font (px)', `<input type="number" class="form-control form-control-sm" data-k="font" min="8" max="14" step="2" value="${fontPx(el)}"/>`);
-    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w || 80}"/>`);
-    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h || 12}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w ?? layoutDims(el).w}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h ?? layoutDims(el).h}"/>`);
     html += row('Align', `<select class="form-select form-select-sm" data-k="align"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>`);
   }
   if (el.type === 'icon') {
-    ensureElementBox(el);
     html += row('Pack', `<select class="form-select form-select-sm" data-k="pack"><option value="builtin">builtin</option><option value="bootstrap">bootstrap</option></select>`);
     html += row('Icon', `<input type="text" class="form-control form-control-sm" data-k="icon" value="${el.icon || ''}"/>`);
-    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="64" value="${el.w || 16}"/>`);
-    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="8" max="64" value="${el.h || 16}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="64" value="${el.w ?? layoutDims(el).w}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="8" max="64" value="${el.h ?? layoutDims(el).h}"/>`);
   }
   if (el.type === 'rect') {
     html += row('W', `<input type="number" class="form-control form-control-sm" data-k="w" value="${el.w}"/>`);
@@ -612,6 +629,7 @@ function addElement(type) {
   if (type === 'bar') Object.assign(el, { key: 'cpu_percent', w: 120, h: 8, max: 100 });
   if (type === 'gauge') Object.assign(el, { key: 'cpu_percent', r: 13, start: 180, end: 0 });
   if (type === 'heart') Object.assign(el, { margin: 7 });
+  initNewElementBox(el);
   currentPage().elements.push(el);
   selIdx = currentPage().elements.length - 1;
   renderProps();
@@ -651,7 +669,6 @@ if (canvas) canvas.addEventListener('mousedown', (e) => {
   const rh = hitResizeHandle(x, y);
   if (rh !== null && selIdx >= 0) {
     const el = currentPage().elements[selIdx];
-    ensureElementBox(el);
     const b = bounds(el);
     drag = {
       mode: 'resize',
@@ -665,7 +682,6 @@ if (canvas) canvas.addEventListener('mousedown', (e) => {
   if (hit >= 0) {
     selIdx = hit;
     const el = currentPage().elements[hit];
-    ensureElementBox(el);
     if (el.type !== 'heart') {
       drag = { mode: 'move', ox: x - el.x, oy: y - el.y };
     }
@@ -716,6 +732,7 @@ function wireUi() {
   onClick('btn-add-page', addCustomPage);
   onClick('btn-add-page-full', addCustomPage);
   onClick('btn-reset-page', () => { resetCurrentPage(); });
+  onClick('btn-device-preview', () => { previewOnDevice(); });
 
   onClick('btn-apply', async () => {
     const carouselEl = document.getElementById('carousel');
@@ -743,7 +760,7 @@ function wireUi() {
 function showInitError(msg) {
   const box = document.getElementById('props');
   if (box) {
-    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.5+, hard refresh (Ctrl+Shift+R).</p>`;
+    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.6+, hard refresh (Ctrl+Shift+R).</p>`;
   }
   toast('Init failed: ' + msg, true);
 }
@@ -754,9 +771,6 @@ async function init() {
     spec = await api('/get-oled-spec');
     layout = JSON.parse(JSON.stringify(spec.layout || {}));
     ensureLayout();
-    Object.values(layout.pages).forEach((p) => {
-      (p.elements || []).forEach(ensureElementBox);
-    });
     const badge = document.getElementById('spec-badge');
     if (badge) badge.textContent = `${spec.width}×${spec.height} · ${spec.aspect}`;
     pageId = (layout.carousel && layout.carousel[0]) || 'home';

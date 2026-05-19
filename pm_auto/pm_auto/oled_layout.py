@@ -106,14 +106,14 @@ class OledLayoutRenderer:
         elif t == 'icon':
             pack = el.get('pack', 'builtin')
             icon = el.get('icon', 'disk')
-            w = int(el.get('w', 14))
-            h = int(el.get('h', 14))
+            w = int(el['w']) if 'w' in el else 14
+            h = int(el['h']) if 'h' in el else 14
             if pack == 'builtin':
                 kind = icon.upper() if icon.upper() in STORAGE_ICONS else 'DISK'
                 if icon in ('ssd', 'usb', 'disk'):
                     kind = icon.upper()
                 icon_bmp = STORAGE_ICONS.get(kind, STORAGE_ICONS['DISK'])
-                if w != 14 or h != 14:
+                if ('w' in el or 'h' in el) and (w != 14 or h != 14):
                     _draw_bitmap_scaled(self.oled, icon_bmp, x, y, w, h, fill=1)
                 else:
                     draw_storage_icon(self.oled, kind, x, y, fill=1)

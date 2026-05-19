@@ -15,6 +15,9 @@
       <div class="d-flex gap-2 ms-auto align-items-center">
         <span id="spec-badge" class="badge text-bg-secondary">128×64 · 2:1</span>
         <span id="save-status" class="text-secondary small"></span>
+        <button type="button" class="btn btn-outline-info btn-sm" id="btn-device-preview" title="One-shot preview using real OLED fonts">
+          <i class="bi bi-display me-1"></i>Device preview
+        </button>
         <button type="button" class="btn btn-success btn-sm" id="btn-apply">
           <i class="bi bi-check2-circle me-1"></i>Apply to device
         </button>
@@ -25,7 +28,7 @@
   </nav>
 
   <div class="alert alert-info border-0 rounded-0 mb-0 py-2 small">
-    <strong>Static preview</strong> while you edit (sample data). Click <strong>Apply to device</strong> when done — that updates the real OLED.
+    <strong>Static preview</strong> while editing. Use <strong>Device preview</strong> to check calibration (real OLED fonts). <strong>Apply</strong> saves to hardware.
   </div>
 
   <div class="container-fluid py-3">

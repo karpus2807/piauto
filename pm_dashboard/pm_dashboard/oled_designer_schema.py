@@ -65,11 +65,15 @@ def _validate_element(el, errors, path):
     el['x'], el['y'] = x, y
     if t == 'text':
         el['text'] = str(el.get('text', ''))[:40]
-        el['w'] = _clamp_int(el.get('w', 80), 8, OLED_WIDTH, 80)
-        el['h'] = _clamp_int(el.get('h', 12), 6, OLED_HEIGHT, 12)
-        default_font = 10 if el.get('size') == 2 else 8
-        el['font'] = _snap_font(el.get('font', default_font))
-        el['size'] = 2 if el['font'] >= 10 else 1
+        if 'w' in el:
+            el['w'] = _clamp_int(el['w'], 8, OLED_WIDTH, 80)
+        if 'h' in el:
+            el['h'] = _clamp_int(el['h'], 6, OLED_HEIGHT, 12)
+        if 'font' in el:
+            el['font'] = _snap_font(el['font'])
+            el['size'] = 2 if el['font'] >= 10 else 1
+        elif 'size' in el:
+            el['size'] = _clamp_int(el['size'], 1, 2, 1)
         align = el.get('align', 'left')
         el['align'] = align if align in ('left', 'center', 'right') else 'left'
     elif t == 'metric':
@@ -78,11 +82,15 @@ def _validate_element(el, errors, path):
             errors.append(f'{path}: unknown metric {key!r}')
         el['key'] = key
         el['format'] = str(el.get('format', '{}'))[:24]
-        el['w'] = _clamp_int(el.get('w', 80), 8, OLED_WIDTH, 80)
-        el['h'] = _clamp_int(el.get('h', 12), 6, OLED_HEIGHT, 12)
-        default_font = 10 if el.get('size') == 2 else 8
-        el['font'] = _snap_font(el.get('font', default_font))
-        el['size'] = 2 if el['font'] >= 10 else 1
+        if 'w' in el:
+            el['w'] = _clamp_int(el['w'], 8, OLED_WIDTH, 80)
+        if 'h' in el:
+            el['h'] = _clamp_int(el['h'], 6, OLED_HEIGHT, 12)
+        if 'font' in el:
+            el['font'] = _snap_font(el['font'])
+            el['size'] = 2 if el['font'] >= 10 else 1
+        elif 'size' in el:
+            el['size'] = _clamp_int(el['size'], 1, 2, 1)
         align = el.get('align', 'left')
         el['align'] = align if align in ('left', 'center', 'right') else 'left'
     elif t == 'icon':
@@ -92,8 +100,10 @@ def _validate_element(el, errors, path):
         el['pack'] = pack
         icon = str(el.get('icon', 'cpu'))[:48]
         el['icon'] = icon
-        el['w'] = _clamp_int(el.get('w', 16), 8, 64, 16)
-        el['h'] = _clamp_int(el.get('h', 16), 8, 64, 16)
+        if 'w' in el:
+            el['w'] = _clamp_int(el['w'], 8, 64, 16)
+        if 'h' in el:
+            el['h'] = _clamp_int(el['h'], 8, 64, 16)
     elif t == 'rect':
         el['w'] = _clamp_int(el.get('w', 32), 1, OLED_WIDTH, 32)
         el['h'] = _clamp_int(el.get('h', 12), 1, OLED_HEIGHT, 12)
