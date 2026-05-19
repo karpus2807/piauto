@@ -4,7 +4,34 @@ from .control_schema import OLED_PAGE_IDS
 
 FULL_CAROUSEL = list(OLED_PAGE_IDS)
 
-# Element order in lists = draw order (back to front).
+# Legacy hardware uses 8px font (ssd1306 size='sm') for all data lines.
+_LEGACY_FONT = 1  # designer: 1 = sm/8px, 2 = md/10px
+
+
+def _txt(x, y, text, **kw):
+    return {'type': 'text', 'x': x, 'y': y, 'text': text, 'size': _LEGACY_FONT, **kw}
+
+
+def _m(x, y, key, **kw):
+    return {'type': 'metric', 'x': x, 'y': y, 'key': key, 'size': _LEGACY_FONT, **kw}
+
+
+def _gauge(x, y, r, key, start, end):
+    return {
+        'type': 'gauge', 'x': x, 'y': y, 'r': r,
+        'key': key, 'start': start, 'end': end,
+    }
+
+
+def _pct(x, y, key):
+    """Centered % on top of pieslice (same as legacy draw_* after pieslice_chart)."""
+    return {
+        'type': 'metric', 'x': x, 'y': y, 'key': key,
+        'format': '{:.0f}%', 'align': 'center', 'size': _LEGACY_FONT,
+    }
+
+
+# Element list order = draw order (back to front).
 
 BUILTIN_PAGE_TEMPLATES = {
     'home': {
@@ -13,22 +40,16 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 15,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 18, 'y': 0, 'text': 'CPU', 'align': 'center'},
-            {
-                'type': 'gauge', 'x': 18, 'y': 27, 'r': 15,
-                'key': 'cpu_percent', 'start': 180, 'end': 0,
-                'label_key': 'cpu_percent', 'label_format': '{:.0f}%',
-            },
-            {'type': 'metric', 'x': 18, 'y': 37, 'key': 'cpu_temp_label', 'align': 'center'},
-            {
-                'type': 'gauge', 'x': 18, 'y': 48, 'r': 15,
-                'key': 'cpu_temp_gauge', 'start': 0, 'end': 180,
-            },
+            _txt(18, 0, 'CPU', align='center'),
+            _gauge(18, 27, 15, 'cpu_percent', 180, 0),
+            _pct(18, 27, 'cpu_percent'),
+            _m(18, 37, 'cpu_temp_label', align='center'),
+            _gauge(18, 48, 15, 'cpu_temp_gauge', 0, 180),
             {'type': 'rect', 'x': 39, 'y': 0, 'w': 88, 'h': 10, 'fill': True},
-            {'type': 'metric', 'x': 83, 'y': 0, 'key': 'ip_line', 'align': 'center', 'invert': True},
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'ram_line'},
+            _m(83, 0, 'ip_line', align='center', invert=True),
+            _m(39, 17, 'ram_line'),
             {'type': 'bar', 'x': 39, 'y': 29, 'w': 88, 'h': 10, 'key': 'memory_percent', 'max': 100},
-            {'type': 'metric', 'x': 39, 'y': 41, 'key': 'storage_line'},
+            _m(39, 41, 'storage_line'),
             {'type': 'bar', 'x': 39, 'y': 53, 'w': 88, 'h': 10, 'key': 'storage_percent', 'max': 100},
         ],
     },
@@ -38,17 +59,14 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'STORAGE'},
-            {'type': 'text', 'x': 127, 'y': 0, 'text': '1/1', 'align': 'right'},
+            _txt(2, 0, 'STORAGE'),
+            _txt(127, 0, '1/1', align='right'),
             {'type': 'icon', 'x': 2, 'y': 20, 'icon': 'ssd', 'pack': 'builtin', 'w': 14, 'h': 14},
-            {
-                'type': 'gauge', 'x': 18, 'y': 38, 'r': 13,
-                'key': 'storage_percent', 'start': 180, 'end': 0,
-                'label_key': 'storage_percent', 'label_format': '{:.0f}%',
-            },
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'storage_detail'},
+            _gauge(18, 38, 13, 'storage_percent', 180, 0),
+            _pct(18, 38, 'storage_percent'),
+            _m(39, 17, 'storage_detail'),
             {'type': 'bar', 'x': 39, 'y': 29, 'w': 88, 'h': 10, 'key': 'storage_percent', 'max': 100},
-            {'type': 'metric', 'x': 39, 'y': 43, 'key': 'storage_temp'},
+            _m(39, 43, 'storage_temp'),
         ],
     },
     'network': {
@@ -57,12 +75,12 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'NETWORK'},
-            {'type': 'text', 'x': 127, 'y': 0, 'text': '1/1', 'align': 'right'},
-            {'type': 'metric', 'x': 4, 'y': 17, 'key': 'net_line_1'},
-            {'type': 'metric', 'x': 4, 'y': 29, 'key': 'net_line_2'},
-            {'type': 'metric', 'x': 4, 'y': 41, 'key': 'net_line_3'},
-            {'type': 'metric', 'x': 4, 'y': 53, 'key': 'net_line_4'},
+            _txt(2, 0, 'NETWORK'),
+            _txt(127, 0, '1/1', align='right'),
+            _m(4, 17, 'net_line_1'),
+            _m(4, 29, 'net_line_2'),
+            _m(4, 41, 'net_line_3'),
+            _m(4, 53, 'net_line_4'),
         ],
     },
     'cpu': {
@@ -71,18 +89,15 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'CPU'},
-            {'type': 'text', 'x': 18, 'y': 10, 'text': 'CPU', 'align': 'center'},
-            {
-                'type': 'gauge', 'x': 18, 'y': 30, 'r': 15,
-                'key': 'cpu_percent', 'start': 180, 'end': 0,
-                'label_key': 'cpu_percent', 'label_format': '{:.0f}%',
-            },
-            {'type': 'metric', 'x': 18, 'y': 40, 'key': 'cpu_temp_label', 'align': 'center'},
-            {'type': 'gauge', 'x': 18, 'y': 50, 'r': 13, 'key': 'cpu_temp_gauge', 'start': 0, 'end': 180},
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'cpu_use_line'},
+            _txt(2, 0, 'CPU'),
+            _txt(18, 10, 'CPU', align='center'),
+            _gauge(18, 30, 15, 'cpu_percent', 180, 0),
+            _pct(18, 30, 'cpu_percent'),
+            _m(18, 40, 'cpu_temp_label', align='center'),
+            _gauge(18, 50, 13, 'cpu_temp_gauge', 0, 180),
+            _m(39, 17, 'cpu_use_line'),
             {'type': 'bar', 'x': 39, 'y': 29, 'w': 88, 'h': 10, 'key': 'cpu_percent', 'max': 100},
-            {'type': 'metric', 'x': 39, 'y': 43, 'key': 'cpu_temp_line'},
+            _m(39, 43, 'cpu_temp_line'),
         ],
     },
     'gpu': {
@@ -91,15 +106,12 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'GPU'},
-            {
-                'type': 'gauge', 'x': 18, 'y': 38, 'r': 13,
-                'key': 'gpu_percent', 'start': 180, 'end': 0,
-                'label_key': 'gpu_percent', 'label_format': '{:.0f}%',
-            },
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'gpu_use_line'},
+            _txt(2, 0, 'GPU'),
+            _gauge(18, 38, 13, 'gpu_percent', 180, 0),
+            _pct(18, 38, 'gpu_percent'),
+            _m(39, 17, 'gpu_use_line'),
             {'type': 'bar', 'x': 39, 'y': 29, 'w': 88, 'h': 10, 'key': 'gpu_percent', 'max': 100},
-            {'type': 'metric', 'x': 39, 'y': 43, 'key': 'gpu_temp_line'},
+            _m(39, 43, 'gpu_temp_line'),
         ],
     },
     'fans': {
@@ -108,10 +120,10 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'FANS'},
-            {'type': 'metric', 'x': 4, 'y': 17, 'key': 'tower_rpm_line'},
-            {'type': 'metric', 'x': 4, 'y': 29, 'key': 'side_fan_line'},
-            {'type': 'metric', 'x': 4, 'y': 41, 'key': 'fan_mode_line'},
+            _txt(2, 0, 'FANS'),
+            _m(4, 17, 'tower_rpm_line'),
+            _m(4, 29, 'side_fan_line'),
+            _m(4, 41, 'fan_mode_line'),
         ],
     },
     'ram': {
@@ -120,13 +132,10 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'RAM'},
-            {
-                'type': 'gauge', 'x': 18, 'y': 38, 'r': 13,
-                'key': 'memory_percent', 'start': 180, 'end': 0,
-                'label_key': 'memory_percent', 'label_format': '{:.0f}%',
-            },
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'ram_line'},
+            _txt(2, 0, 'RAM'),
+            _gauge(18, 38, 13, 'memory_percent', 180, 0),
+            _pct(18, 38, 'memory_percent'),
+            _m(39, 17, 'ram_line'),
             {'type': 'bar', 'x': 39, 'y': 29, 'w': 88, 'h': 10, 'key': 'memory_percent', 'max': 100},
         ],
     },
@@ -136,11 +145,11 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'TEMPS'},
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'cpu_temp_line'},
-            {'type': 'metric', 'x': 39, 'y': 29, 'key': 'gpu_temp_line'},
-            {'type': 'metric', 'x': 39, 'y': 41, 'key': 'disk_temp_line_1'},
-            {'type': 'metric', 'x': 39, 'y': 53, 'key': 'disk_temp_line_2'},
+            _txt(2, 0, 'TEMPS'),
+            _m(39, 17, 'cpu_temp_line'),
+            _m(39, 29, 'gpu_temp_line'),
+            _m(39, 41, 'disk_temp_line_1'),
+            _m(39, 53, 'disk_temp_line_2'),
         ],
     },
     'services': {
@@ -149,10 +158,10 @@ BUILTIN_PAGE_TEMPLATES = {
         'duration': 5,
         'builtin': True,
         'elements': [
-            {'type': 'text', 'x': 2, 'y': 0, 'text': 'TOP CPU'},
-            {'type': 'metric', 'x': 39, 'y': 17, 'key': 'top_cpu_1'},
-            {'type': 'metric', 'x': 39, 'y': 29, 'key': 'top_cpu_2'},
-            {'type': 'metric', 'x': 39, 'y': 41, 'key': 'top_cpu_3'},
+            _txt(2, 0, 'TOP CPU'),
+            _m(39, 17, 'top_cpu_1'),
+            _m(39, 29, 'top_cpu_2'),
+            _m(39, 41, 'top_cpu_3'),
         ],
     },
     'heart': {

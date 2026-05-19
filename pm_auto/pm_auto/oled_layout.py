@@ -61,9 +61,12 @@ class OledLayoutRenderer:
         return True
 
     def _text_size(self, el):
+        """Match legacy OLED: 8px (sm) unless font px or size=2 explicitly set."""
         if el.get('font') is not None:
             return _FONT_MAP.get(_snap_font(el['font']), 'sm')
-        return 'md' if el.get('size') == 2 else 'sm'
+        if el.get('size') == 2:
+            return 'md'
+        return 'sm'
 
     def _metric_text(self, el, metrics):
         key = el.get('key', '')
