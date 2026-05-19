@@ -11,6 +11,7 @@ OLED_PHYSICAL = '0.96"'
 
 ELEMENT_TYPES = ('text', 'metric', 'icon', 'rect', 'bar', 'gauge', 'heart')
 ICON_PACKS = ('builtin', 'bootstrap')
+ICON_ANIMATIONS = ('none', 'blink', 'pulse', 'spin')
 
 BUILTIN_ICONS = (
     'cpu', 'gpu', 'ram', 'disk', 'ssd', 'usb', 'wifi', 'ethernet',
@@ -114,6 +115,8 @@ def _validate_element(el, errors, path):
                 el['w'] = 16
             if el.get('h', 16) <= 16:
                 el['h'] = 16
+        animation = el.get('animation', 'none')
+        el['animation'] = animation if animation in ICON_ANIMATIONS else 'none'
     elif t == 'rect':
         el['w'] = _clamp_int(el.get('w', 32), 1, OLED_WIDTH, 32)
         el['h'] = _clamp_int(el.get('h', 12), 1, OLED_HEIGHT, 12)

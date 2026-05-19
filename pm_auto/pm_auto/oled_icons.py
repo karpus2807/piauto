@@ -279,6 +279,40 @@ _ICON_HOME = _bmp([
     "..............",
 ])
 
+_ICON_PULSE = _bmp([
+    "..............",
+    "..............",
+    "..............",
+    "..............",
+    "##....##......",
+    "..#..#..#.....",
+    "...##...#.....",
+    "........#..#..",
+    ".........##...",
+    "..............",
+    "..............",
+    "..............",
+    "..............",
+    "..............",
+])
+
+_ICON_GAUGE = _bmp([
+    "..............",
+    "....######....",
+    "...##....##...",
+    "..##......##..",
+    ".##........##.",
+    ".##...##...##.",
+    ".##....#...##.",
+    "..##...#..##..",
+    "...##....##...",
+    "....######....",
+    "......##......",
+    "..............",
+    "..............",
+    "..............",
+])
+
 STORAGE_ICONS = {
     'SD': _ICON_SD,
     'SSD': _ICON_SSD,
@@ -304,6 +338,8 @@ BUILTIN_ICONS = {
     'clock': _ICON_CLOCK,
     'server': _ICON_SERVER,
     'home': _ICON_HOME,
+    'pulse': _ICON_PULSE,
+    'gauge': _ICON_GAUGE,
 }
 
 BOOTSTRAP_ICON_ALIASES = {
@@ -329,6 +365,7 @@ BOOTSTRAP_ICON_ALIASES = {
     'bi-lightning-charge': 'power',
     'bi-lightning-charge-fill': 'power',
     'bi-battery-half': 'power',
+    'bi-speedometer2': 'gauge',
     'bi-power': 'power',
     'bi-clock': 'clock',
     'bi-clock-history': 'clock',

@@ -1,5 +1,7 @@
 """Render OLED pages from designer JSON layouts (Phase 2)."""
 
+import time
+
 from .oled_icons import draw_builtin_icon
 
 _DRAW_Z = {
@@ -97,6 +99,19 @@ class OledLayoutRenderer:
             icon = el.get('icon', 'disk')
             w = int(el['w']) if 'w' in el else 14
             h = int(el['h']) if 'h' in el else 14
+            animation = el.get('animation', 'none')
+            frame = int(time.time() * 2)
+            if animation == 'blink' and frame % 2:
+                return
+            if animation == 'pulse' and frame % 2 == 0:
+                grow = 2
+                x -= grow // 2
+                y -= grow // 2
+                w += grow
+                h += grow
+            if animation == 'spin' and frame % 2:
+                # Cheap 1-bit spin cue for tiny OLEDs: alternate one-pixel offset.
+                x += 1
             if pack in ('builtin', 'bootstrap'):
                 draw_builtin_icon(self.oled, icon, x, y, w, h, fill=1)
             else:

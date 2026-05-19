@@ -588,6 +588,7 @@ function renderProps() {
   if (el.type === 'icon') {
     html += row('Pack', `<select class="form-select form-select-sm" data-k="pack"><option value="builtin">builtin</option><option value="bootstrap">bootstrap</option></select>`);
     html += row('Icon', `<input type="text" class="form-control form-control-sm" data-k="icon" value="${el.icon || ''}"/>`);
+    html += row('Animation', `<select class="form-select form-select-sm" data-k="animation"><option value="none">none</option><option value="blink">blink</option><option value="pulse">pulse</option><option value="spin">spin</option></select>`);
     html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="64" value="${el.w ?? layoutDims(el).w}"/>`);
     html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="8" max="64" value="${el.h ?? layoutDims(el).h}"/>`);
   }
@@ -633,6 +634,7 @@ function renderProps() {
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', handler);
     if (k === 'align') inp.value = el.align || 'left';
     if (k === 'pack') inp.value = el.pack || 'builtin';
+    if (k === 'animation') inp.value = el.animation || 'none';
   });
 }
 
@@ -644,7 +646,7 @@ function addElement(type) {
   const el = { type, x: 4, y: 4 };
   if (type === 'text') Object.assign(el, { text: 'Label', font: 8, size: 1, w: 80, h: 12 });
   if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', font: 8, size: 1, w: 80, h: 12 });
-  if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 14, h: 14 });
+  if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 14, h: 14, animation: 'none' });
   if (type === 'rect') Object.assign(el, { w: 40, h: 20, fill: false });
   if (type === 'bar') Object.assign(el, { key: 'cpu_percent', w: 120, h: 8, max: 100 });
   if (type === 'gauge') Object.assign(el, { key: 'cpu_percent', r: 13, start: 180, end: 0 });
