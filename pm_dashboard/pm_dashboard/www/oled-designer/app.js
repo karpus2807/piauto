@@ -30,7 +30,41 @@ let selIdx = -1;
 let drag = null;
 let toastBs = null;
 let previewBusy = false;
-let useHardwarePreview = true;
+/** Static editor preview only — no live metrics / no server PNG overlay while editing */
+let useHardwarePreview = false;
+let metricsPollTimer = null;
+
+const STATIC_METRICS = {
+  cpu_temperature: 52.3,
+  gpu_temperature: 48.0,
+  cpu_percent: 24,
+  memory_percent: 61,
+  storage_percent: 72,
+  storage_percent_free: 28,
+  pwm_fan_speed: 3200,
+  gpio_fan_state: true,
+  hostname: 'pironman',
+  gpu_percent: 12,
+  ip_line: '192.168.1.42',
+  ram_line: 'RAM 61%',
+  storage_line: 'STORE 72%',
+  storage_detail: 'SSD 512G',
+  storage_temp: '32C',
+  cpu_use_line: 'USE 24%',
+  cpu_temp_line: 'TEMP 52C',
+  cpu_temp_label: '52C',
+  cpu_temp_gauge: 52,
+  gpu_use_line: 'USE 12%',
+  gpu_temp_line: 'TEMP 48C',
+  tower_rpm_line: 'TOWER 3200 RPM',
+  side_fan_line: 'SIDE  ON',
+  fan_mode_line: 'MODE  Auto',
+  net_line_1: 'eth0 192.168.1.42',
+  net_line_2: 'wlan0 10.0.0.5',
+  top_cpu_1: 'python 18%',
+  top_cpu_2: 'node 9%',
+  top_cpu_3: 'idle 73%',
+};
 
 const canvas = document.getElementById('oled');
 const ctx = canvas ? canvas.getContext('2d') : null;
@@ -347,6 +381,13 @@ async function render() {
   renderCanvasFallback();
   if (useHardwarePreview) {
     await renderHardwarePreview();
+  }
+}
+
+function stopLivePreview() {
+  if (metricsPollTimer) {
+    clearInterval(metricsPollTimer);
+    metricsPollTimer = null;
   }
 }
 
@@ -702,7 +743,7 @@ function wireUi() {
 function showInitError(msg) {
   const box = document.getElementById('props');
   if (box) {
-    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.3+, hard refresh (Ctrl+Shift+R).</p>`;
+    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.5+, hard refresh (Ctrl+Shift+R).</p>`;
   }
   toast('Init failed: ' + msg, true);
 }
@@ -720,18 +761,12 @@ async function init() {
     if (badge) badge.textContent = `${spec.width}×${spec.height} · ${spec.aspect}`;
     pageId = (layout.carousel && layout.carousel[0]) || 'home';
     if (!layout.pages[pageId]) pageId = 'home';
+    metrics = { ...STATIC_METRICS };
+    stopLivePreview();
     renderPageList();
     renderIconGrid();
     renderProps();
     await render();
-    const poll = async () => {
-      try {
-        metrics = await api('/get-oled-metrics');
-        await render();
-      } catch (_) { /* ignore */ }
-    };
-    poll();
-    setInterval(poll, 3000);
   } catch (e) {
     showInitError(e.message);
   }
