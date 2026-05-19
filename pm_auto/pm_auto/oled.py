@@ -334,6 +334,7 @@ class OLED():
 
         m = {
             'cpu_temperature': temp,
+            'cpu_temp_label': f'{temp:.1f}{unit}',
             'cpu_percent': cpu_pct,
             'cpu_temp_gauge': min(cpu_temp_c, 100),
             'memory_percent': memory_info.percent,
@@ -781,6 +782,32 @@ class OLED():
     @log_error
     def draw_heart(self):
         self.oled.draw_heart_fullscreen(fill=1, margin=7)
+
+    @log_error
+    def draw_legacy_page(self, page_id, slide=0):
+        """Draw a single built-in page (preview / designer PNG export)."""
+        if page_id == 'home':
+            self.draw_home()
+        elif page_id == 'storage':
+            self.draw_storage(slide)
+        elif page_id == 'network':
+            self.draw_network(slide)
+        elif page_id == 'cpu':
+            self.draw_cpu()
+        elif page_id == 'gpu':
+            self.draw_gpu()
+        elif page_id == 'fans':
+            self.draw_fans()
+        elif page_id == 'ram':
+            self.draw_ram()
+        elif page_id == 'temps':
+            self.draw_temps()
+        elif page_id == 'services':
+            self.draw_services()
+        elif page_id == 'heart':
+            self.draw_heart()
+        else:
+            self.oled.draw_text(str(page_id)[:12], 2, 28, size='sm')
 
     @log_error
     def draw_current_page(self):

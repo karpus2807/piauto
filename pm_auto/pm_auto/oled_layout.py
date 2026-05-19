@@ -3,7 +3,16 @@
 import math
 
 from .oled_icons import draw_storage_icon, STORAGE_ICONS
-from .utils import format_bytes, format_storage_pair
+
+_DRAW_Z = {
+    'rect': 0,
+    'bar': 1,
+    'gauge': 2,
+    'icon': 3,
+    'text': 4,
+    'metric': 5,
+    'heart': 6,
+}
 
 
 class OledLayoutRenderer:
@@ -19,7 +28,11 @@ class OledLayoutRenderer:
             return False
         pid = page_def.get('id', '')
         metrics = self.host.collect_layout_metrics(slide=slide, page_id=pid)
-        for el in elements:
+        ordered = sorted(
+            enumerate(elements),
+            key=lambda item: _DRAW_Z.get(item[1].get('type'), 5),
+        )
+        for _, el in ordered:
             self._draw_element(el, metrics)
         return True
 
@@ -59,7 +72,7 @@ class OledLayoutRenderer:
             if not text:
                 return
             align = el.get('align', 'left')
-            fill = 0 if el.get('key') == 'ip_line' else 1
+            fill = 0 if el.get('invert') else 1
             self.oled.draw_text(text, x, y, fill=fill, align=align, size=size)
         elif t == 'icon':
             pack = el.get('pack', 'builtin')
@@ -95,6 +108,15 @@ class OledLayoutRenderer:
             start = int(el.get('start', 180))
             end = int(el.get('end', 0))
             self.oled.draw_pieslice_chart(pct, x, y, r, start, end)
+            label_key = el.get('label_key')
+            if label_key:
+                label_el = {
+                    'key': label_key,
+                    'format': el.get('label_format', '{}'),
+                }
+                label = self._metric_text(label_el, metrics)
+                if label and label != '—':
+                    self.oled.draw_text(label, x, y, fill=1, align='center', size='sm')
         elif t == 'heart':
             margin = int(el.get('margin', 7))
             self.oled.draw_heart_fullscreen(fill=1, margin=margin)

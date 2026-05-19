@@ -21,6 +21,7 @@ from .oled_designer_schema import (
     validate_layout,
 )
 from .oled_page_templates import BUILTIN_PAGE_TEMPLATES
+from .oled_preview_render import render_oled_page_png
 
 
 def register_oled_designer_routes(app, api_prefix, static_folder, getters):
@@ -98,6 +99,28 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
                 'gpio_fan_state': latest.get('gpio_fan_state'),
             },
         }
+
+    @app.route(f'{api_prefix}/oled-preview-png', methods=['GET', 'POST'])
+    @cross_origin()
+    def oled_preview_png():
+        try:
+            if request.method == 'POST':
+                body = request.get_json(silent=True) or {}
+                page_id = body.get('page', 'home')
+                slide = int(body.get('slide', 0))
+                layout = body.get('layout')
+            else:
+                page_id = request.args.get('page', 'home')
+                slide = int(request.args.get('slide', 0))
+                layout = None
+            cfg = get_config() or {}
+            system = cfg.get('system', {})
+            resp = render_oled_page_png(page_id, slide=slide, layout=layout, system_config=system)
+            if resp is None:
+                return {'status': False, 'error': 'OLED preview render failed (pm_auto?)'}
+            return resp
+        except Exception as e:
+            return {'status': False, 'error': str(e), 'trace': traceback.format_exc()[-400:]}
 
     @app.route(f'{api_prefix}/reset-oled-page/<page_id>')
     @cross_origin()

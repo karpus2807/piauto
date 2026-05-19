@@ -29,9 +29,12 @@ let pageId = 'home';
 let selIdx = -1;
 let drag = null;
 let toastBs = null;
+let previewBusy = false;
+let useHardwarePreview = true;
 
 const canvas = document.getElementById('oled');
 const ctx = canvas.getContext('2d');
+const Z_ORDER = { rect: 0, bar: 1, gauge: 2, icon: 3, text: 4, metric: 5, heart: 6 };
 
 async function api(path, method = 'GET', body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -107,28 +110,72 @@ function drawHeartFull() {
   }
 }
 
-function render() {
+function drawTextOled(text, x, y, align, fillLight) {
+  ctx.font = '8px sans-serif';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = fillLight ? '#000' : '#fff';
+  let tx = x;
+  if (align === 'center') tx = x - ctx.measureText(text).width / 2;
+  else if (align === 'right') tx = x - ctx.measureText(text).width;
+  ctx.fillText(text, tx, y);
+  ctx.fillStyle = '#fff';
+}
+
+function drawSelectionOverlay() {
+  if (selIdx < 0) return;
+  const el = currentPage().elements[selIdx];
+  const b = bounds(el);
+  ctx.strokeStyle = '#3d8bfd';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
+  ctx.strokeStyle = '#fff';
+}
+
+async function renderHardwarePreview() {
+  if (previewBusy) return false;
+  previewBusy = true;
+  try {
+    const res = await fetch(API + '/oled-preview-png', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page: pageId, slide: 0, layout }),
+    });
+    if (!res.ok || !res.headers.get('content-type')?.includes('image')) {
+      return false;
+    }
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 128, 64);
+    ctx.drawImage(bmp, 0, 0, 128, 64);
+    drawSelectionOverlay();
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    previewBusy = false;
+  }
+}
+
+function renderCanvasFallback() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, 128, 64);
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = '#fff';
 
-  const els = currentPage().elements || [];
-  els.forEach((el, i) => {
+  const base = currentPage().elements || [];
+  const els = base
+    .map((el, i) => ({ el, i }))
+    .sort((a, b) => (Z_ORDER[a.el.type] ?? 5) - (Z_ORDER[b.el.type] ?? 5));
+  els.forEach(({ el, i }) => {
+    const selected = i === selIdx;
     const selected = i === selIdx;
     if (el.type === 'text') {
-      ctx.font = el.size === 2 ? 'bold 12px monospace' : '10px monospace';
-      ctx.fillText(el.text || '', el.x, el.y + (el.size === 2 ? 12 : 10));
+      drawTextOled(el.text || '', el.x, el.y, el.align || 'left', false);
     } else if (el.type === 'metric') {
-      ctx.font = el.size === 2 ? 'bold 12px monospace' : '10px monospace';
       const t = formatMetric(el);
-      if (el.key === 'ip_line') {
-        ctx.fillStyle = '#000';
-        ctx.fillText(t, el.x, el.y + 8);
-        ctx.fillStyle = '#fff';
-      } else {
-        ctx.fillText(t, el.x, el.y + (el.size === 2 ? 12 : 10));
-      }
+      drawTextOled(t, el.x, el.y, el.align || 'left', el.invert || el.key === 'ip_line');
     } else if (el.type === 'icon') {
       ctx.strokeStyle = '#888';
       ctx.strokeRect(el.x, el.y, el.w || 16, el.h || 16);
@@ -147,16 +194,23 @@ function render() {
     } else if (el.type === 'gauge') {
       const pct = Number(metrics[el.key]) || 0;
       drawGauge(el.x, el.y, el.r || 13, pct, el.start ?? 180, el.end ?? 0);
+      if (el.label_key) {
+        const t = formatMetric({ key: el.label_key, format: el.label_format || '{}' });
+        drawTextOled(t, el.x, el.y, 'center', false);
+      }
     } else if (el.type === 'heart') {
       drawHeartFull();
     }
-    if (selected) {
-      ctx.strokeStyle = '#3d8bfd';
-      const b = bounds(el);
-      ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
-      ctx.strokeStyle = '#fff';
-    }
+    if (selected) drawSelectionOverlay();
   });
+}
+
+async function render() {
+  if (useHardwarePreview) {
+    const ok = await renderHardwarePreview();
+    if (ok) return;
+  }
+  renderCanvasFallback();
 }
 
 function bounds(el) {

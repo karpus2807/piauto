@@ -22,7 +22,7 @@ METRIC_KEYS = (
     'storage_percent', 'storage_percent_free', 'pwm_fan_speed', 'gpio_fan_state',
     'hostname', 'uptime_seconds', 'gpu_percent',
     'ip_line', 'ram_line', 'storage_line', 'storage_detail', 'storage_temp',
-    'cpu_use_line', 'cpu_temp_line', 'cpu_temp_gauge',
+    'cpu_use_line', 'cpu_temp_line', 'cpu_temp_label', 'cpu_temp_gauge',
     'gpu_use_line', 'gpu_temp_line',
     'tower_rpm_line', 'side_fan_line', 'fan_mode_line',
     'net_line_1', 'net_line_2', 'net_line_3', 'net_line_4',
