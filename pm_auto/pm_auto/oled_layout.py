@@ -1,6 +1,6 @@
 """Render OLED pages from designer JSON layouts (Phase 2)."""
 
-from .oled_icons import STORAGE_ICONS, draw_storage_icon
+from .oled_icons import draw_builtin_icon
 
 _DRAW_Z = {
     'rect': 0,
@@ -24,20 +24,6 @@ def _snap_font(px):
         if abs(n - size) <= 1:
             return size
     return max(8, min(14, n))
-
-
-def _draw_bitmap_scaled(oled, bmp, x, y, w, h, fill=1):
-    native_w = len(bmp[0])
-    native_h = len(bmp)
-    w = max(1, int(w))
-    h = max(1, int(h))
-    for row in range(h):
-        for col in range(w):
-            sr = int(row * native_h / h)
-            sc = int(col * native_w / w)
-            if bmp[sr][sc]:
-                oled.draw.point((x + col, y + row), fill=fill)
-
 
 class OledLayoutRenderer:
     """Draw a page from layout elements using live metrics from the OLED host."""
@@ -112,14 +98,7 @@ class OledLayoutRenderer:
             w = int(el['w']) if 'w' in el else 14
             h = int(el['h']) if 'h' in el else 14
             if pack == 'builtin':
-                kind = icon.upper() if icon.upper() in STORAGE_ICONS else 'DISK'
-                if icon in ('ssd', 'usb', 'disk'):
-                    kind = icon.upper()
-                icon_bmp = STORAGE_ICONS.get(kind, STORAGE_ICONS['DISK'])
-                if ('w' in el or 'h' in el) and (w != 14 or h != 14):
-                    _draw_bitmap_scaled(self.oled, icon_bmp, x, y, w, h, fill=1)
-                else:
-                    draw_storage_icon(self.oled, kind, x, y, fill=1)
+                draw_builtin_icon(self.oled, icon, x, y, w, h, fill=1)
             else:
                 self.oled.draw.rectangle((x, y, x + w, y + h), outline=1)
         elif t == 'rect':
