@@ -35,6 +35,117 @@ let useHardwarePreview = true;
 const canvas = document.getElementById('oled');
 const ctx = canvas ? canvas.getContext('2d') : null;
 const Z_ORDER = { rect: 0, bar: 1, gauge: 2, icon: 3, text: 4, metric: 5, heart: 6 };
+const FONT_PX = [8, 10, 12, 14];
+const RESIZE_HANDLES = ['nw', 'ne', 'sw', 'se'];
+const HANDLE_HIT = 6;
+
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function snapFont(px) {
+  const n = Number(px) || 8;
+  return FONT_PX.reduce((best, s) => (Math.abs(s - n) < Math.abs(best - n) ? s : best), 8);
+}
+
+function fontPx(el) {
+  if (el.font != null) return snapFont(el.font);
+  return el.size === 2 ? 10 : 8;
+}
+
+function fontFromBoxHeight(h) {
+  return snapFont(Math.round(Math.max(8, Math.min(14, (h || 12) * 0.75))));
+}
+
+function setElementFont(el, px) {
+  el.font = snapFont(px);
+  el.size = el.font >= 10 ? 2 : 1;
+  if (el.type === 'text' || el.type === 'metric') {
+    el.h = Math.max(6, el.font + 4);
+  }
+}
+
+function ensureElementBox(el) {
+  if (!el || el.type === 'heart') return;
+  if (el.type === 'text' || el.type === 'metric') {
+    if (el.font == null) setElementFont(el, el.size === 2 ? 10 : 8);
+    if (!el.w) el.w = 80;
+    if (!el.h) el.h = fontPx(el) + 4;
+  } else if (el.type === 'icon') {
+    if (!el.w) el.w = 16;
+    if (!el.h) el.h = 16;
+  } else if (el.type === 'rect' || el.type === 'bar') {
+    if (!el.w) el.w = el.type === 'bar' ? 120 : 40;
+    if (!el.h) el.h = el.type === 'bar' ? 8 : 20;
+  } else if (el.type === 'gauge' && !el.r) {
+    el.r = 13;
+  }
+}
+
+function isResizable(el) {
+  return el && el.type !== 'heart';
+}
+
+function handlePoint(b, handle) {
+  switch (handle) {
+    case 'nw': return { x: b.x, y: b.y };
+    case 'ne': return { x: b.x + b.w, y: b.y };
+    case 'sw': return { x: b.x, y: b.y + b.h };
+    default: return { x: b.x + b.w, y: b.y + b.h };
+  }
+}
+
+function hitResizeHandle(mx, my) {
+  if (selIdx < 0) return null;
+  const el = currentPage().elements[selIdx];
+  if (!isResizable(el)) return null;
+  const b = bounds(el);
+  for (const h of RESIZE_HANDLES) {
+    const p = handlePoint(b, h);
+    if (Math.abs(mx - p.x) <= HANDLE_HIT && Math.abs(my - p.y) <= HANDLE_HIT) return h;
+  }
+  return null;
+}
+
+function applyResize(el, handle, mx, my, start) {
+  let { x0, y0, x1, y1 } = start;
+  if (handle === 'se') { x1 = mx; y1 = my; }
+  else if (handle === 'sw') { x0 = mx; y1 = my; }
+  else if (handle === 'ne') { x1 = mx; y0 = my; }
+  else if (handle === 'nw') { x0 = mx; y0 = my; }
+
+  let lx = Math.min(x0, x1);
+  let ly = Math.min(y0, y1);
+  let w = Math.max(8, Math.abs(x1 - x0));
+  let h = Math.max(6, Math.abs(y1 - y0));
+  lx = clamp(lx, 0, 127);
+  ly = clamp(ly, 0, 63);
+  w = Math.min(w, 128 - lx);
+  h = Math.min(h, 64 - ly);
+
+  if (el.type === 'gauge') {
+    const cx = Math.round(lx + w / 2);
+    const cy = Math.round(ly + h / 2);
+    el.x = cx;
+    el.y = cy;
+    el.r = clamp(Math.round(Math.min(w, h) / 2), 4, 24);
+    return;
+  }
+
+  el.x = Math.round(lx);
+  el.y = Math.round(ly);
+  el.w = Math.round(w);
+  el.h = Math.round(h);
+  if (el.type === 'text' || el.type === 'metric') {
+    setElementFont(el, fontFromBoxHeight(el.h));
+  }
+}
+
+function resizeCursor(handle) {
+  if (handle === 'nw' || handle === 'se') return 'nwse-resize';
+  if (handle === 'ne' || handle === 'sw') return 'nesw-resize';
+  return 'crosshair';
+}
 
 async function api(path, method = 'GET', body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -121,25 +232,36 @@ function drawHeartFull() {
   }
 }
 
-function drawTextOled(text, x, y, align, fillLight) {
-  ctx.font = '8px sans-serif';
+function drawTextOled(text, el, align, fillLight) {
+  ensureElementBox(el);
+  const px = fontPx(el);
+  ctx.font = `${px}px sans-serif`;
   ctx.textBaseline = 'top';
   ctx.fillStyle = fillLight ? '#000' : '#fff';
-  let tx = x;
-  if (align === 'center') tx = x - ctx.measureText(text).width / 2;
-  else if (align === 'right') tx = x - ctx.measureText(text).width;
-  ctx.fillText(text, tx, y);
+  const boxH = el.h || px + 4;
+  const ty = el.y + Math.max(0, Math.floor((boxH - px) / 2));
+  let tx = el.x;
+  if (align === 'center') tx = el.x - ctx.measureText(text).width / 2;
+  else if (align === 'right') tx = el.x - ctx.measureText(text).width;
+  ctx.fillText(text, tx, ty);
   ctx.fillStyle = '#fff';
 }
 
 function drawSelectionOverlay() {
   if (selIdx < 0) return;
   const el = currentPage().elements[selIdx];
+  if (!isResizable(el)) return;
   const b = bounds(el);
   ctx.strokeStyle = '#3d8bfd';
   ctx.lineWidth = 1;
   ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
+  ctx.fillStyle = '#3d8bfd';
+  RESIZE_HANDLES.forEach((h) => {
+    const p = handlePoint(b, h);
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  });
   ctx.strokeStyle = '#fff';
+  ctx.fillStyle = '#fff';
 }
 
 async function renderHardwarePreview() {
@@ -182,17 +304,21 @@ function renderCanvasFallback() {
     .sort((a, b) => (Z_ORDER[a.el.type] ?? 5) - (Z_ORDER[b.el.type] ?? 5));
   els.forEach(({ el, i }) => {
     const selected = i === selIdx;
+    ensureElementBox(el);
     if (el.type === 'text') {
-      drawTextOled(el.text || '', el.x, el.y, el.align || 'left', false);
+      drawTextOled(el.text || '', el, el.align || 'left', false);
     } else if (el.type === 'metric') {
       const t = formatMetric(el);
-      drawTextOled(t, el.x, el.y, el.align || 'left', el.invert || el.key === 'ip_line');
+      drawTextOled(t, el, el.align || 'left', el.invert || el.key === 'ip_line');
     } else if (el.type === 'icon') {
+      const iw = el.w || 16;
+      const ih = el.h || 16;
       ctx.strokeStyle = '#888';
-      ctx.strokeRect(el.x, el.y, el.w || 16, el.h || 16);
-      ctx.font = '8px monospace';
+      ctx.strokeRect(el.x, el.y, iw, ih);
+      const labelPx = snapFont(Math.max(6, Math.min(12, Math.round(ih * 0.45))));
+      ctx.font = `${labelPx}px monospace`;
       ctx.fillStyle = '#aaa';
-      ctx.fillText((el.icon || 'ic').slice(0, 4), el.x + 2, el.y + 8);
+      ctx.fillText((el.icon || 'ic').slice(0, 4), el.x + 2, el.y + Math.floor((ih - labelPx) / 2));
       ctx.fillStyle = '#fff';
     } else if (el.type === 'rect') {
       if (el.fill) ctx.fillRect(el.x, el.y, el.w, el.h);
@@ -207,7 +333,8 @@ function renderCanvasFallback() {
       drawGauge(el.x, el.y, el.r || 13, pct, el.start ?? 180, el.end ?? 0);
       if (el.label_key) {
         const t = formatMetric({ key: el.label_key, format: el.label_format || '{}' });
-        drawTextOled(t, el.x, el.y, 'center', false);
+        const lbl = { type: 'text', x: el.x, y: el.y, font: 8, h: 10, w: 40 };
+        drawTextOled(t, lbl, 'center', false);
       }
     } else if (el.type === 'heart') {
       drawHeartFull();
@@ -239,17 +366,18 @@ function ensureLayout() {
 }
 
 function bounds(el) {
-  if (el.type === 'bar') return { x: el.x, y: el.y, w: el.w, h: el.h };
-  if (el.type === 'rect') return { x: el.x, y: el.y, w: el.w, h: el.h };
+  ensureElementBox(el);
+  if (el.type === 'bar' || el.type === 'rect') return { x: el.x, y: el.y, w: el.w, h: el.h };
   if (el.type === 'icon') return { x: el.x, y: el.y, w: el.w || 16, h: el.h || 16 };
   if (el.type === 'gauge') {
     const r = el.r || 13;
     return { x: el.x - r, y: el.y - r, w: r * 2, h: r * 2 };
   }
   if (el.type === 'heart') return { x: 0, y: 0, w: 128, h: 64 };
-  const w = el.w || 80;
-  const h = el.size === 2 ? 14 : 12;
-  return { x: el.x, y: el.y, w, h };
+  if (el.type === 'text' || el.type === 'metric') {
+    return { x: el.x, y: el.y, w: el.w || 80, h: el.h || fontPx(el) + 4 };
+  }
+  return { x: el.x, y: el.y, w: 80, h: 12 };
 }
 
 function hitTest(mx, my) {
@@ -361,20 +489,29 @@ function renderProps() {
     html += row('Y', `<input type="number" class="form-control form-control-sm" data-k="y" min="0" max="63" value="${el.y}"/>`);
   }
   if (el.type === 'text') {
+    ensureElementBox(el);
     html += row('Text', `<input type="text" class="form-control form-control-sm" data-k="text" value="${el.text || ''}"/>`);
-    html += row('Size', `<select class="form-select form-select-sm" data-k="size"><option value="1">Small</option><option value="2">Large</option></select>`);
+    html += row('Font (px)', `<input type="number" class="form-control form-control-sm" data-k="font" min="8" max="14" step="2" value="${fontPx(el)}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w || 80}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h || 12}"/>`);
+    html += row('Align', `<select class="form-select form-select-sm" data-k="align"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>`);
   }
   if (el.type === 'metric') {
+    ensureElementBox(el);
     html += row('Metric', `<select class="form-select form-select-sm" data-k="key">${(spec.metrics || []).map((k) =>
       `<option value="${k}"${k === el.key ? ' selected' : ''}>${k}</option>`).join('')}</select>`);
     html += row('Format', `<input type="text" class="form-control form-control-sm" data-k="format" value="${el.format || '{}'}"/>`);
-    html += row('Size', `<select class="form-select form-select-sm" data-k="size"><option value="1">Small</option><option value="2">Large</option></select>`);
+    html += row('Font (px)', `<input type="number" class="form-control form-control-sm" data-k="font" min="8" max="14" step="2" value="${fontPx(el)}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="128" value="${el.w || 80}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="6" max="64" value="${el.h || 12}"/>`);
+    html += row('Align', `<select class="form-select form-select-sm" data-k="align"><option value="left">left</option><option value="center">center</option><option value="right">right</option></select>`);
   }
   if (el.type === 'icon') {
+    ensureElementBox(el);
     html += row('Pack', `<select class="form-select form-select-sm" data-k="pack"><option value="builtin">builtin</option><option value="bootstrap">bootstrap</option></select>`);
     html += row('Icon', `<input type="text" class="form-control form-control-sm" data-k="icon" value="${el.icon || ''}"/>`);
-    html += row('W', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="32" value="${el.w || 16}"/>`);
-    html += row('H', `<input type="number" class="form-control form-control-sm" data-k="h" min="8" max="32" value="${el.h || 16}"/>`);
+    html += row('Width', `<input type="number" class="form-control form-control-sm" data-k="w" min="8" max="64" value="${el.w || 16}"/>`);
+    html += row('Height', `<input type="number" class="form-control form-control-sm" data-k="h" min="8" max="64" value="${el.h || 16}"/>`);
   }
   if (el.type === 'rect') {
     html += row('W', `<input type="number" class="form-control form-control-sm" data-k="w" value="${el.w}"/>`);
@@ -403,12 +540,20 @@ function renderProps() {
     const k = inp.dataset.k;
     const handler = () => {
       let v = inp.type === 'checkbox' ? inp.checked : inp.value;
-      if (['x', 'y', 'w', 'h', 'size', 'max', 'r', 'start', 'end', 'margin'].includes(k)) v = Number(v);
-      el[k] = v;
+      if (['x', 'y', 'w', 'h', 'size', 'font', 'max', 'r', 'start', 'end', 'margin'].includes(k)) v = Number(v);
+      if (k === 'font') {
+        setElementFont(el, v);
+      } else {
+        el[k] = v;
+      }
+      if ((k === 'w' || k === 'h') && (el.type === 'text' || el.type === 'metric')) {
+        setElementFont(el, fontFromBoxHeight(el.h));
+      }
       render();
+      if (k === 'font' || k === 'w' || k === 'h') renderProps();
     };
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', handler);
-    if (k === 'size' && el.size) inp.value = String(el.size);
+    if (k === 'align') inp.value = el.align || 'left';
     if (k === 'pack') inp.value = el.pack || 'builtin';
   });
 }
@@ -419,8 +564,8 @@ function row(label, input) {
 
 function addElement(type) {
   const el = { type, x: 4, y: 4 };
-  if (type === 'text') Object.assign(el, { text: 'Label', size: 1, w: 80 });
-  if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', size: 1, w: 80 });
+  if (type === 'text') Object.assign(el, { text: 'Label', font: 8, size: 1, w: 80, h: 12 });
+  if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', font: 8, size: 1, w: 80, h: 12 });
   if (type === 'icon') Object.assign(el, { icon: 'cpu', pack: 'builtin', w: 16, h: 16 });
   if (type === 'rect') Object.assign(el, { w: 40, h: 20, fill: false });
   if (type === 'bar') Object.assign(el, { key: 'cpu_percent', w: 120, h: 8, max: 100 });
@@ -462,12 +607,26 @@ function renderIconGrid() {
 
 if (canvas) canvas.addEventListener('mousedown', (e) => {
   const { x, y } = canvasXY(e);
+  const rh = hitResizeHandle(x, y);
+  if (rh !== null && selIdx >= 0) {
+    const el = currentPage().elements[selIdx];
+    ensureElementBox(el);
+    const b = bounds(el);
+    drag = {
+      mode: 'resize',
+      handle: rh,
+      start: { x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h },
+    };
+    render();
+    return;
+  }
   const hit = hitTest(x, y);
   if (hit >= 0) {
     selIdx = hit;
     const el = currentPage().elements[hit];
+    ensureElementBox(el);
     if (el.type !== 'heart') {
-      drag = { ox: x - el.x, oy: y - el.y };
+      drag = { mode: 'move', ox: x - el.x, oy: y - el.y };
     }
     renderProps();
     render();
@@ -479,16 +638,26 @@ if (canvas) canvas.addEventListener('mousedown', (e) => {
 });
 
 if (canvas) canvas.addEventListener('mousemove', (e) => {
-  if (!drag || selIdx < 0) return;
   const { x, y } = canvasXY(e);
+  if (!drag || selIdx < 0) {
+    const rh = hitResizeHandle(x, y);
+    canvas.style.cursor = rh ? resizeCursor(rh) : 'crosshair';
+    return;
+  }
   const el = currentPage().elements[selIdx];
-  el.x = Math.max(0, Math.min(127, x - drag.ox));
-  el.y = Math.max(0, Math.min(63, y - drag.oy));
+  if (drag.mode === 'resize') {
+    applyResize(el, drag.handle, x, y, drag.start);
+    renderProps();
+    render();
+    return;
+  }
+  el.x = clamp(Math.round(x - drag.ox), 0, 127);
+  el.y = clamp(Math.round(y - drag.oy), 0, 63);
   render();
 });
 
-if (canvas) canvas.addEventListener('mouseup', () => { drag = null; });
-if (canvas) canvas.addEventListener('mouseleave', () => { drag = null; });
+if (canvas) canvas.addEventListener('mouseup', () => { drag = null; if (canvas) canvas.style.cursor = 'crosshair'; });
+if (canvas) canvas.addEventListener('mouseleave', () => { drag = null; if (canvas) canvas.style.cursor = 'crosshair'; });
 
 function wireUi() {
   document.querySelectorAll('[data-add]').forEach((btn) => {
@@ -544,6 +713,9 @@ async function init() {
     spec = await api('/get-oled-spec');
     layout = JSON.parse(JSON.stringify(spec.layout || {}));
     ensureLayout();
+    Object.values(layout.pages).forEach((p) => {
+      (p.elements || []).forEach(ensureElementBox);
+    });
     const badge = document.getElementById('spec-badge');
     if (badge) badge.textContent = `${spec.width}×${spec.height} · ${spec.aspect}`;
     pageId = (layout.carousel && layout.carousel[0]) || 'home';

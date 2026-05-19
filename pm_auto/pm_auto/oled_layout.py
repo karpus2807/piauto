@@ -1,8 +1,6 @@
 """Render OLED pages from designer JSON layouts (Phase 2)."""
 
-import math
-
-from .oled_icons import draw_storage_icon, STORAGE_ICONS
+from .oled_icons import STORAGE_ICONS, draw_storage_icon
 
 _DRAW_Z = {
     'rect': 0,
@@ -13,6 +11,32 @@ _DRAW_Z = {
     'metric': 5,
     'heart': 6,
 }
+
+_FONT_MAP = {8: 'sm', 10: 'md', 12: 'lg', 14: 'xl'}
+
+
+def _snap_font(px):
+    try:
+        n = int(px)
+    except (TypeError, ValueError):
+        n = 8
+    for size in (8, 10, 12, 14):
+        if abs(n - size) <= 1:
+            return size
+    return max(8, min(14, n))
+
+
+def _draw_bitmap_scaled(oled, bmp, x, y, w, h, fill=1):
+    native_w = len(bmp[0])
+    native_h = len(bmp)
+    w = max(1, int(w))
+    h = max(1, int(h))
+    for row in range(h):
+        for col in range(w):
+            sr = int(row * native_h / h)
+            sc = int(col * native_w / w)
+            if bmp[sr][sc]:
+                oled.draw.point((x + col, y + row), fill=fill)
 
 
 class OledLayoutRenderer:
@@ -35,6 +59,11 @@ class OledLayoutRenderer:
         for _, el in ordered:
             self._draw_element(el, metrics)
         return True
+
+    def _text_size(self, el):
+        if el.get('font') is not None:
+            return _FONT_MAP.get(_snap_font(el['font']), 'sm')
+        return 'md' if el.get('size') == 2 else 'sm'
 
     def _metric_text(self, el, metrics):
         key = el.get('key', '')
@@ -62,12 +91,12 @@ class OledLayoutRenderer:
         y = int(el.get('y', 0))
 
         if t == 'text':
-            size = 'md' if el.get('size') == 2 else 'sm'
+            size = self._text_size(el)
             text = el.get('text', '')
             align = el.get('align', 'left')
             self.oled.draw_text(text, x, y, fill=1, align=align, size=size)
         elif t == 'metric':
-            size = 'md' if el.get('size') == 2 else 'sm'
+            size = self._text_size(el)
             text = self._metric_text(el, metrics)
             if not text:
                 return
@@ -83,7 +112,11 @@ class OledLayoutRenderer:
                 kind = icon.upper() if icon.upper() in STORAGE_ICONS else 'DISK'
                 if icon in ('ssd', 'usb', 'disk'):
                     kind = icon.upper()
-                draw_storage_icon(self.oled, kind, x, y, fill=1)
+                icon_bmp = STORAGE_ICONS.get(kind, STORAGE_ICONS['DISK'])
+                if w != 14 or h != 14:
+                    _draw_bitmap_scaled(self.oled, icon_bmp, x, y, w, h, fill=1)
+                else:
+                    draw_storage_icon(self.oled, kind, x, y, fill=1)
             else:
                 self.oled.draw.rectangle((x, y, x + w, y + h), outline=1)
         elif t == 'rect':
@@ -91,8 +124,6 @@ class OledLayoutRenderer:
             h = int(el.get('h', 10))
             if el.get('fill'):
                 self.oled.draw.rectangle((x, y, x + w, y + h), fill=1, outline=1)
-                if el.get('invert_text'):
-                    pass
             else:
                 self.oled.draw.rectangle((x, y, x + w, y + h), outline=1)
         elif t == 'bar':

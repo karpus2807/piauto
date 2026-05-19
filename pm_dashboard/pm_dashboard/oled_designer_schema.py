@@ -41,6 +41,17 @@ def _clamp_int(value, lo, hi, default=0):
     return max(lo, min(hi, v))
 
 
+def _snap_font(px):
+    try:
+        n = int(px)
+    except (TypeError, ValueError):
+        n = 8
+    for size in (8, 10, 12, 14):
+        if abs(n - size) <= 1:
+            return size
+    return max(8, min(14, n))
+
+
 def _validate_element(el, errors, path):
     if not isinstance(el, dict):
         errors.append(f'{path}: element must be object')
@@ -54,14 +65,26 @@ def _validate_element(el, errors, path):
     el['x'], el['y'] = x, y
     if t == 'text':
         el['text'] = str(el.get('text', ''))[:40]
-        el['size'] = _clamp_int(el.get('size', 1), 1, 2, 1)
+        el['w'] = _clamp_int(el.get('w', 80), 8, OLED_WIDTH, 80)
+        el['h'] = _clamp_int(el.get('h', 12), 6, OLED_HEIGHT, 12)
+        default_font = 10 if el.get('size') == 2 else 8
+        el['font'] = _snap_font(el.get('font', default_font))
+        el['size'] = 2 if el['font'] >= 10 else 1
+        align = el.get('align', 'left')
+        el['align'] = align if align in ('left', 'center', 'right') else 'left'
     elif t == 'metric':
         key = el.get('key', 'cpu_temperature')
         if key not in METRIC_KEYS:
             errors.append(f'{path}: unknown metric {key!r}')
         el['key'] = key
         el['format'] = str(el.get('format', '{}'))[:24]
-        el['size'] = _clamp_int(el.get('size', 1), 1, 2, 1)
+        el['w'] = _clamp_int(el.get('w', 80), 8, OLED_WIDTH, 80)
+        el['h'] = _clamp_int(el.get('h', 12), 6, OLED_HEIGHT, 12)
+        default_font = 10 if el.get('size') == 2 else 8
+        el['font'] = _snap_font(el.get('font', default_font))
+        el['size'] = 2 if el['font'] >= 10 else 1
+        align = el.get('align', 'left')
+        el['align'] = align if align in ('left', 'center', 'right') else 'left'
     elif t == 'icon':
         pack = el.get('pack', 'builtin')
         if pack not in ICON_PACKS:
@@ -69,8 +92,8 @@ def _validate_element(el, errors, path):
         el['pack'] = pack
         icon = str(el.get('icon', 'cpu'))[:48]
         el['icon'] = icon
-        el['w'] = _clamp_int(el.get('w', 16), 8, 32, 16)
-        el['h'] = _clamp_int(el.get('h', 16), 8, 32, 16)
+        el['w'] = _clamp_int(el.get('w', 16), 8, 64, 16)
+        el['h'] = _clamp_int(el.get('h', 16), 8, 64, 16)
     elif t == 'rect':
         el['w'] = _clamp_int(el.get('w', 32), 1, OLED_WIDTH, 32)
         el['h'] = _clamp_int(el.get('h', 12), 1, OLED_HEIGHT, 12)
