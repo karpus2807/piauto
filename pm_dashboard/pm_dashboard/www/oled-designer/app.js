@@ -776,12 +776,10 @@ function wireUi() {
         duration: 5,
       });
       toast(`OLED showing "${pageId}" for 5 seconds (live edits, not saved)`);
-      setTimeout(() => {
-        if (btn) btn.disabled = false;
-      }, 5500);
     } catch (e) {
-      if (btn) btn.disabled = false;
       toast(e.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   });
 

@@ -166,6 +166,7 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
         test_patch = {
             'oled_designer_test': {
                 'until': time.time() + duration,
+                'token': str(time.time_ns()),
                 'page': page_id,
                 'layout': result,
             },

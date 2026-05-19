@@ -112,6 +112,7 @@ class OLED():
         self._designer_test_until = 0.0
         self._designer_test_page = None
         self._designer_test_layout = None
+        self._designer_test_token = None
 
         self._page_sequence = []
         self._page_index = 0
@@ -291,6 +292,7 @@ class OLED():
         self._designer_test_until = 0.0
         self._designer_test_page = None
         self._designer_test_layout = None
+        self._designer_test_token = None
         self._layout_renderer = None
 
     def _apply_designer_test(self, payload):
@@ -305,6 +307,7 @@ class OLED():
             return
         self._designer_test_until = until
         self._designer_test_page = str(payload.get('page', 'home'))[:32]
+        self._designer_test_token = payload.get('token')
         layout = payload.get('layout')
         if isinstance(layout, str):
             try:
@@ -314,7 +317,7 @@ class OLED():
         self._designer_test_layout = layout if isinstance(layout, dict) else None
         self._layout_renderer = None
         self.wake_flag = True
-        if self.oled is not None and self.oled.is_ready() and self.enable:
+        if self.oled is not None and self.oled.is_ready():
             self._draw_designer_test_page()
 
     def _designer_test_active(self):
@@ -922,10 +925,12 @@ class OLED():
 
     @log_error
     def run(self):
-        if self.oled is None or not self.oled.is_ready() or not self.wake_flag or not self.enable:
+        if self.oled is None or not self.oled.is_ready():
             return
         if self._designer_test_active():
             self._draw_designer_test_page()
+            return
+        if not self.wake_flag or not self.enable:
             return
         if self._handle_alerts():
             return
