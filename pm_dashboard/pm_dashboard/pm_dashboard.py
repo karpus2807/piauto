@@ -42,6 +42,14 @@ __on_inside_config_changed__ = lambda config: None
 __pm_auto_runtime_update__ = None
 
 
+def _pm_auto_runtime_update(patch):
+    """Best-effort runtime-only update for PMAuto; returns whether it was handled."""
+    if __pm_auto_runtime_update__ is None:
+        return False
+    __pm_auto_runtime_update__(patch)
+    return True
+
+
 def _control_get_history(n=1):
     if __db__ is None:
         return {}
@@ -55,9 +63,7 @@ def _register_control_center():
         'get_device_info': lambda: __device_info__,
         'on_config_changed': lambda config: __on_config_changed__(config),
         'apply_system_runtime': lambda patch: __on_outside_config_changed__({'system': patch}),
-        'pm_auto_runtime_update': lambda patch: (
-            __pm_auto_runtime_update__(patch) if __pm_auto_runtime_update__ else None
-        ),
+        'pm_auto_runtime_update': _pm_auto_runtime_update,
         'get_history': _control_get_history,
         'get_disks': get_disks,
         'get_ips': get_ips,

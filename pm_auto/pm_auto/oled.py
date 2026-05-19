@@ -314,6 +314,8 @@ class OLED():
         self._designer_test_layout = layout if isinstance(layout, dict) else None
         self._layout_renderer = None
         self.wake_flag = True
+        if self.oled is not None and self.oled.is_ready() and self.enable:
+            self._draw_designer_test_page()
 
     def _designer_test_active(self):
         if self._designer_test_until <= 0:

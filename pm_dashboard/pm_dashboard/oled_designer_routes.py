@@ -171,15 +171,20 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
             },
         }
         try:
+            handled_runtime = False
             if pm_auto_runtime_update:
-                pm_auto_runtime_update(test_patch)
-            else:
+                handled_runtime = bool(pm_auto_runtime_update(test_patch))
+            if not handled_runtime:
                 apply_system_runtime(test_patch)
         except Exception as e:
             return {'status': False, 'error': str(e), 'trace': traceback.format_exc()[-300:]}
         return {
             'status': True,
-            'data': {'page': page_id, 'duration': duration},
+            'data': {
+                'page': page_id,
+                'duration': duration,
+                'runtime': handled_runtime,
+            },
         }
 
     @app.route(f'{api_prefix}/apply-oled-layout', methods=['POST'])
