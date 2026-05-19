@@ -84,7 +84,8 @@ function snapFont(px) {
 
 function fontPx(el) {
   if (el.font != null) return snapFont(el.font);
-  return el.size === 2 ? 10 : 8;
+  if (el.size === 2) return 10;
+  return 8;
 }
 
 function fontFromBoxHeight(h) {
