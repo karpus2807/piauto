@@ -117,6 +117,7 @@ CONFIG_SPEC = {
     'oled_alert_gpu_temp': {'type': 'float', 'min': 50, 'max': 95, 'label': 'Alert GPU temp'},
     'oled_alert_undervoltage': {'type': 'bool', 'label': 'PWR undervoltage alert'},
     'oled_sleep_timeout': {'type': 'int', 'min': 0, 'max': 600, 'label': 'OLED sleep timeout (s)'},
+    'oled_designer_layout': {'type': 'json', 'label': 'OLED designer layout (JSON)'},
 }
 
 UI_SECTIONS = (
@@ -190,6 +191,12 @@ def validate_key(key, value):
         return True, ','.join(pages)
     if kind == 'string':
         return True, str(value)
+    if kind == 'json':
+        from .oled_designer_schema import layout_to_config_string, validate_layout
+        ok, result = validate_layout(value)
+        if not ok:
+            return False, result
+        return True, layout_to_config_string(result)
     return False, f'Unsupported type for {key}'
 
 

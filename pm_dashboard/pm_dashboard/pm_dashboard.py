@@ -49,20 +49,18 @@ def _control_get_history(n=1):
 
 
 def _register_control_center():
+    getters = {
+        'get_config': lambda: __config__,
+        'get_device_info': lambda: __device_info__,
+        'on_config_changed': lambda config: __on_config_changed__(config),
+        'get_history': _control_get_history,
+        'get_disks': get_disks,
+        'get_ips': get_ips,
+    }
     from .control_routes import register_control_routes
-    register_control_routes(
-        __app__,
-        __api_prefix__,
-        __www_path__,
-        {
-            'get_config': lambda: __config__,
-            'get_device_info': lambda: __device_info__,
-            'on_config_changed': lambda config: __on_config_changed__(config),
-            'get_history': _control_get_history,
-            'get_disks': get_disks,
-            'get_ips': get_ips,
-        },
-    )
+    register_control_routes(__app__, __api_prefix__, __www_path__, getters)
+    from .oled_designer_routes import register_oled_designer_routes
+    register_oled_designer_routes(__app__, __api_prefix__, __www_path__, getters)
 
 
 def __on_config_changed__(config):
