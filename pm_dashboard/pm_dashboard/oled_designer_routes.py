@@ -29,6 +29,7 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
     get_config = getters['get_config']
     on_config_changed = getters['on_config_changed']
     pm_auto_runtime_update = getters.get('pm_auto_runtime_update')
+    apply_system_runtime = getters.get('apply_system_runtime', on_config_changed)
     get_history = getters['get_history']
 
     @app.route('/oled-designer')
@@ -162,19 +163,18 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
             return {'status': False, 'error': result}
         if page_id not in (result.get('pages') or {}):
             return {'status': False, 'error': f'Unknown page: {page_id}'}
-        if not pm_auto_runtime_update:
-            return {
-                'status': False,
-                'error': 'OLED test unavailable — upgrade pm_dashboard 1.5.9+, pm_auto 1.2.31+, restart pironman5',
-            }
+        test_patch = {
+            'oled_designer_test': {
+                'until': time.time() + duration,
+                'page': page_id,
+                'layout': result,
+            },
+        }
         try:
-            pm_auto_runtime_update({
-                'oled_designer_test': {
-                    'until': time.time() + duration,
-                    'page': page_id,
-                    'layout': result,
-                },
-            })
+            if pm_auto_runtime_update:
+                pm_auto_runtime_update(test_patch)
+            else:
+                apply_system_runtime(test_patch)
         except Exception as e:
             return {'status': False, 'error': str(e), 'trace': traceback.format_exc()[-300:]}
         return {
