@@ -53,6 +53,7 @@ def _register_control_center():
         'get_config': lambda: __config__,
         'get_device_info': lambda: __device_info__,
         'on_config_changed': lambda config: __on_config_changed__(config),
+        'apply_system_runtime': lambda patch: __on_outside_config_changed__({'system': patch}),
         'get_history': _control_get_history,
         'get_disks': get_disks,
         'get_ips': get_ips,

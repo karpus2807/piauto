@@ -109,6 +109,9 @@ class OLED():
         self._designer_layout = None
         self._designer_enabled = False
         self._layout_renderer = None
+        self._designer_test_until = 0.0
+        self._designer_test_page = None
+        self._designer_test_layout = None
 
         self._page_sequence = []
         self._page_index = 0
@@ -280,7 +283,61 @@ class OLED():
             self._load_designer_layout(config.get('oled_designer_layout'))
         if 'oled_designer_enabled' in config:
             self._designer_enabled = bool(config['oled_designer_enabled'])
+        if 'oled_designer_test' in config:
+            self._apply_designer_test(config.get('oled_designer_test'))
         self._rebuild_pages()
+
+    def _clear_designer_test(self):
+        self._designer_test_until = 0.0
+        self._designer_test_page = None
+        self._designer_test_layout = None
+        self._layout_renderer = None
+
+    def _apply_designer_test(self, payload):
+        if not payload:
+            self._clear_designer_test()
+            return
+        if not isinstance(payload, dict):
+            return
+        until = float(payload.get('until', 0))
+        if until <= time.time():
+            self._clear_designer_test()
+            return
+        self._designer_test_until = until
+        self._designer_test_page = str(payload.get('page', 'home'))[:32]
+        layout = payload.get('layout')
+        if isinstance(layout, str):
+            try:
+                layout = json.loads(layout)
+            except (json.JSONDecodeError, TypeError):
+                layout = None
+        self._designer_test_layout = layout if isinstance(layout, dict) else None
+        self._layout_renderer = None
+        self.wake_flag = True
+
+    def _designer_test_active(self):
+        if self._designer_test_until <= 0:
+            return False
+        if time.time() >= self._designer_test_until:
+            self._clear_designer_test()
+            return False
+        return True
+
+    def _draw_designer_test_page(self):
+        pid = self._designer_test_page or 'home'
+        self.oled.clear()
+        pdef = None
+        if self._designer_test_layout:
+            pdef = (self._designer_test_layout.get('pages') or {}).get(pid)
+        if not pdef:
+            pdef = self._layout_page_def(pid)
+        rendered = False
+        if pdef and pdef.get('elements'):
+            self._layout_renderer = OledLayoutRenderer(self)
+            rendered = self._layout_renderer.render(pdef, slide=0)
+        if not rendered:
+            self.draw_legacy_page(pid, 0)
+        self.oled.display()
 
     def _load_designer_layout(self, raw):
         if not raw:
@@ -864,6 +921,9 @@ class OLED():
     @log_error
     def run(self):
         if self.oled is None or not self.oled.is_ready() or not self.wake_flag or not self.enable:
+            return
+        if self._designer_test_active():
+            self._draw_designer_test_page()
             return
         if self._handle_alerts():
             return

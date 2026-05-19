@@ -1,6 +1,7 @@
 """Flask routes for the OLED visual designer."""
 
 import json
+import time
 import traceback
 
 from flask import request, send_from_directory
@@ -27,6 +28,7 @@ from .oled_preview_render import render_oled_page_png
 def register_oled_designer_routes(app, api_prefix, static_folder, getters):
     get_config = getters['get_config']
     on_config_changed = getters['on_config_changed']
+    apply_system_runtime = getters.get('apply_system_runtime', on_config_changed)
     get_history = getters['get_history']
 
     @app.route('/oled-designer')
@@ -141,6 +143,35 @@ def register_oled_designer_routes(app, api_prefix, static_folder, getters):
         return {
             'status': True,
             'data': {'page': copy.deepcopy(BUILTIN_PAGE_TEMPLATES[page_id])},
+        }
+
+    @app.route(f'{api_prefix}/test-oled-page', methods=['POST'])
+    @cross_origin()
+    def test_oled_page():
+        """Show current editor page on physical OLED for a few seconds (no save)."""
+        body = request.get_json(silent=True) or {}
+        layout = body.get('layout', body)
+        page_id = str(body.get('page', 'home'))[:32]
+        try:
+            duration = int(body.get('duration', 5))
+        except (TypeError, ValueError):
+            duration = 5
+        duration = max(1, min(30, duration))
+        ok, result = validate_layout(layout)
+        if not ok:
+            return {'status': False, 'error': result}
+        if page_id not in (result.get('pages') or {}):
+            return {'status': False, 'error': f'Unknown page: {page_id}'}
+        apply_system_runtime({
+            'oled_designer_test': {
+                'until': time.time() + duration,
+                'page': page_id,
+                'layout': result,
+            },
+        })
+        return {
+            'status': True,
+            'data': {'page': page_id, 'duration': duration},
         }
 
     @app.route(f'{api_prefix}/apply-oled-layout', methods=['POST'])

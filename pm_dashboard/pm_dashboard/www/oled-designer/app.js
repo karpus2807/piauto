@@ -735,6 +735,30 @@ function wireUi() {
   onClick('btn-reset-page', () => { resetCurrentPage(); });
   onClick('btn-device-preview', () => { previewOnDevice(); });
 
+  onClick('btn-test-oled', async () => {
+    const btn = document.getElementById('btn-test-oled');
+    if (btn?.disabled) return;
+    const carouselEl = document.getElementById('carousel');
+    const carousel = (carouselEl?.value || '')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+    layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
+    try {
+      if (btn) btn.disabled = true;
+      await api('/test-oled-page', 'POST', {
+        page: pageId,
+        layout,
+        duration: 5,
+      });
+      toast(`OLED showing "${pageId}" for 5 seconds (live edits, not saved)`);
+      setTimeout(() => {
+        if (btn) btn.disabled = false;
+      }, 5500);
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      toast(e.message, true);
+    }
+  });
+
   onClick('btn-apply', async () => {
     const carouselEl = document.getElementById('carousel');
     const carousel = (carouselEl?.value || '')
