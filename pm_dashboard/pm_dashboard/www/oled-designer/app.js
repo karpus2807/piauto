@@ -40,9 +40,20 @@ async function api(path, method = 'GET', body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(API + path, opts);
-  const json = await res.json();
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (_) {
+    throw new Error(`Bad API response (${res.status}): ${text.slice(0, 120)}`);
+  }
   if (!json.status) throw new Error(json.error || 'Request failed');
   return json.data;
+}
+
+function onClick(id, fn) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', fn);
 }
 
 function toast(msg, err = false) {
@@ -262,21 +273,28 @@ function makePageBtn(id, listEl) {
 }
 
 function renderPageList() {
+  if (!layout || !layout.pages) return;
   const builtinEl = document.getElementById('page-list-builtin');
   const customEl = document.getElementById('page-list-custom');
   const legacyEl = document.getElementById('page-list');
-  if (legacyEl) legacyEl.innerHTML = '';
-  if (!builtinEl) return;
-  builtinEl.innerHTML = '';
-  customEl.innerHTML = '';
-  BUILTIN_PAGE_IDS.forEach((id) => {
-    if (layout.pages[id]) makePageBtn(id, builtinEl);
-  });
-  Object.keys(layout.pages)
-    .filter((id) => !BUILTIN_PAGE_IDS.includes(id))
-    .sort()
-    .forEach((id) => makePageBtn(id, customEl));
-  document.getElementById('carousel').value = (layout.carousel || []).join(',');
+
+  if (builtinEl && customEl) {
+    builtinEl.innerHTML = '';
+    customEl.innerHTML = '';
+    BUILTIN_PAGE_IDS.forEach((id) => {
+      if (layout.pages[id]) makePageBtn(id, builtinEl);
+    });
+    Object.keys(layout.pages)
+      .filter((id) => !BUILTIN_PAGE_IDS.includes(id))
+      .sort()
+      .forEach((id) => makePageBtn(id, customEl));
+  } else if (legacyEl) {
+    legacyEl.innerHTML = '';
+    Object.keys(layout.pages).sort().forEach((id) => makePageBtn(id, legacyEl));
+  }
+
+  const carousel = document.getElementById('carousel');
+  if (carousel) carousel.value = (layout.carousel || []).join(',');
 }
 
 function addCustomPage() {
@@ -430,7 +448,7 @@ function renderIconGrid() {
   });
 }
 
-canvas.addEventListener('mousedown', (e) => {
+if (canvas) canvas.addEventListener('mousedown', (e) => {
   const { x, y } = canvasXY(e);
   const hit = hitTest(x, y);
   if (hit >= 0) {
@@ -448,7 +466,7 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
-canvas.addEventListener('mousemove', (e) => {
+if (canvas) canvas.addEventListener('mousemove', (e) => {
   if (!drag || selIdx < 0) return;
   const { x, y } = canvasXY(e);
   const el = currentPage().elements[selIdx];
@@ -457,65 +475,85 @@ canvas.addEventListener('mousemove', (e) => {
   render();
 });
 
-canvas.addEventListener('mouseup', () => { drag = null; });
-canvas.addEventListener('mouseleave', () => { drag = null; });
+if (canvas) canvas.addEventListener('mouseup', () => { drag = null; });
+if (canvas) canvas.addEventListener('mouseleave', () => { drag = null; });
 
-document.querySelectorAll('[data-add]').forEach((btn) => {
-  btn.onclick = () => addElement(btn.dataset.add);
-});
+function wireUi() {
+  document.querySelectorAll('[data-add]').forEach((btn) => {
+    btn.addEventListener('click', () => addElement(btn.dataset.add));
+  });
 
-document.getElementById('btn-del-el').onclick = () => {
-  if (selIdx < 0) return;
-  currentPage().elements.splice(selIdx, 1);
-  selIdx = -1;
-  renderProps();
-  render();
-};
+  onClick('btn-del-el', () => {
+    if (selIdx < 0) return;
+    currentPage().elements.splice(selIdx, 1);
+    selIdx = -1;
+    renderProps();
+    render();
+  });
 
-document.getElementById('btn-add-page').onclick = addCustomPage;
-document.getElementById('btn-add-page-full').onclick = addCustomPage;
-document.getElementById('btn-reset-page').onclick = resetCurrentPage;
+  onClick('btn-add-page', addCustomPage);
+  onClick('btn-add-page-full', addCustomPage);
+  onClick('btn-reset-page', () => { resetCurrentPage(); });
 
-document.getElementById('btn-apply').onclick = async () => {
-  const carousel = document.getElementById('carousel').value
-    .split(',').map((s) => s.trim()).filter(Boolean);
-  layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
-  document.getElementById('save-status').textContent = 'Saving…';
-  try {
-    await api('/apply-oled-layout', 'POST', { layout });
-    document.getElementById('save-status').textContent = 'Applied';
-    toast('Layout applied — OLED will use designer pages');
-  } catch (e) {
-    document.getElementById('save-status').textContent = '';
-    toast(e.message, true);
+  onClick('btn-apply', async () => {
+    const carouselEl = document.getElementById('carousel');
+    const carousel = (carouselEl?.value || '')
+      .split(',').map((s) => s.trim()).filter(Boolean);
+    layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
+    const status = document.getElementById('save-status');
+    if (status) status.textContent = 'Saving…';
+    try {
+      await api('/apply-oled-layout', 'POST', { layout });
+      if (status) status.textContent = 'Applied';
+      toast('Layout applied — OLED will use designer pages');
+    } catch (e) {
+      if (status) status.textContent = '';
+      toast(e.message, true);
+    }
+  });
+
+  const iconPack = document.getElementById('icon-pack');
+  const iconSearch = document.getElementById('icon-search');
+  if (iconPack) iconPack.addEventListener('change', renderIconGrid);
+  if (iconSearch) iconSearch.addEventListener('input', renderIconGrid);
+}
+
+function showInitError(msg) {
+  const box = document.getElementById('props');
+  if (box) {
+    box.innerHTML = `<p class="text-danger small mb-0"><strong>Could not load designer.</strong><br>${msg}<br>Try: restart pironman5, upgrade pm_dashboard 1.5.2+, hard refresh (Ctrl+Shift+R).</p>`;
   }
-};
-
-document.getElementById('icon-pack').onchange = renderIconGrid;
-document.getElementById('icon-search').oninput = renderIconGrid;
+  toast('Init failed: ' + msg, true);
+}
 
 async function init() {
+  wireUi();
   try {
     spec = await api('/get-oled-spec');
     layout = JSON.parse(JSON.stringify(spec.layout));
-    document.getElementById('spec-badge').textContent =
-      `${spec.width}×${spec.height} · ${spec.aspect}`;
+    const badge = document.getElementById('spec-badge');
+    if (badge) badge.textContent = `${spec.width}×${spec.height} · ${spec.aspect}`;
     pageId = (layout.carousel && layout.carousel[0]) || 'home';
+    if (!layout.pages[pageId]) pageId = 'home';
     renderPageList();
     renderIconGrid();
     renderProps();
-    render();
+    await render();
     const poll = async () => {
       try {
         metrics = await api('/get-oled-metrics');
-        render();
+        await render();
       } catch (_) { /* ignore */ }
     };
     poll();
     setInterval(poll, 3000);
   } catch (e) {
-    toast('Init failed: ' + e.message, true);
+    showInitError(e.message);
   }
 }
 
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
