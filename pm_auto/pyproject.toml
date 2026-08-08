@@ -4,11 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pm_auto"
-version = "1.2.37"
 authors = [
   { name="SunFounder", email="service@sunfounder.com" },
 ]
-description = "Library for monitoring Raspberry Pi system status"
+description = "Pironman automation (Max-compatible pm_auto 2.x) with multi-page OLED designer support"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -16,15 +15,23 @@ classifiers = [
   "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
   "Operating System :: OS Independent",
 ]
-
-[project.scripts]
-pm-auto-oled = "pm_auto.cli_oled:main"
-pm-auto-oled-preview = "pm_auto.cli_oled_preview:main"
-pm-auto-status = "pm_auto.cli_status:main"
+dynamic = ["version"]
 
 [tool.setuptools]
-packages = ["pm_auto"]
+packages = [
+  "pm_auto",
+  "pm_auto.libs",
+  "pm_auto.addons",
+  "pm_auto.addons.oled",
+  "pm_auto.addons.oled.pages",
+  "pm_auto.addons.oled.designer",
+  "pm_auto.addons.rgb_matrix",
+  "pm_auto.addons.rgb_matrix.effects",
+  ]
 
 [project.urls]
 "Homepage" = "https://github.com/karpus2807/piauto"
 "Bug Tracker" = "https://github.com/karpus2807/piauto/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "pm_auto.__version__"}

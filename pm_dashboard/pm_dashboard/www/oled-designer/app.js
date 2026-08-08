@@ -3,6 +3,19 @@ const BUILTIN_PAGE_IDS = [
   'home', 'storage', 'network', 'cpu', 'gpu', 'fans',
   'ram', 'temps', 'services', 'heart',
 ];
+const STOCK_PAGE_IDS = ['mix', 'performance', 'ips', 'disk'];
+const STOCK_HELP = {
+  mix: 'Firmware PageMix — IP + CPU + temp + RAM',
+  performance: 'Firmware PagePerformance — CPU/RAM/temp/fan',
+  ips: 'Firmware PageIPs — scrolling addresses',
+  disk: 'Firmware PageDisks — storage usage',
+};
+const STOCK_SOURCES = {
+  mix: 'pm_auto.addons.oled.pages.mix.PageMix',
+  performance: 'pm_auto.addons.oled.pages.performance.PagePerformance',
+  ips: 'pm_auto.addons.oled.pages.ips.PageIPs',
+  disk: 'pm_auto.addons.oled.pages.disks.PageDisks',
+};
 
 const BUILTIN_BI = {
   cpu: 'bi-cpu-fill', gpu: 'bi-gpu-card', ram: 'bi-memory',
@@ -242,8 +255,12 @@ function currentPage() {
   return layout.pages[pageId];
 }
 
+function isStock(id) {
+  return STOCK_PAGE_IDS.includes(id) || layout.pages[id]?.native || layout.pages[id]?.stock;
+}
+
 function isBuiltin(id) {
-  return BUILTIN_PAGE_IDS.includes(id) || layout.pages[id]?.builtin;
+  return BUILTIN_PAGE_IDS.includes(id) || (!isStock(id) && layout.pages[id]?.builtin);
 }
 
 function formatMetric(el) {
@@ -438,17 +455,79 @@ function stopLivePreview() {
 
 function ensureLayout() {
   if (!layout || typeof layout !== 'object') {
-    layout = { version: 1, pages: {}, carousel: [...BUILTIN_PAGE_IDS, 'heart'] };
+    layout = { version: 1, pages: {}, carousel: [...BUILTIN_PAGE_IDS, 'heart'], static: false, static_page: '' };
   }
   if (!layout.pages || typeof layout.pages !== 'object') layout.pages = {};
+  if (layout.static == null) layout.static = false;
+  if (layout.static_page == null) layout.static_page = '';
   BUILTIN_PAGE_IDS.forEach((id) => {
     if (!layout.pages[id]) {
       layout.pages[id] = { id, name: id, duration: 5, builtin: true, elements: [] };
     }
+    if (layout.pages[id].duration == null) layout.pages[id].duration = 5;
+  });
+  STOCK_PAGE_IDS.forEach((id) => {
+    if (!layout.pages[id] || !layout.pages[id].native) {
+      layout.pages[id] = {
+        id,
+        name: id,
+        duration: 5,
+        builtin: true,
+        native: true,
+        stock: true,
+        source: STOCK_SOURCES[id] || '',
+        elements: layout.pages[id]?.elements || [
+          { type: 'text', x: 64, y: 20, text: id.toUpperCase(), align: 'center', size: 2 },
+          { type: 'text', x: 64, y: 40, text: 'Native stock page', align: 'center', size: 1 },
+        ],
+      };
+    }
+    if (layout.pages[id].duration == null) layout.pages[id].duration = 5;
   });
   if (!Array.isArray(layout.carousel) || !layout.carousel.length) {
     layout.carousel = [...BUILTIN_PAGE_IDS];
   }
+}
+
+function syncStaticUi() {
+  const chk = document.getElementById('chk-static');
+  const pageDur = document.getElementById('page-duration');
+  const hint = document.getElementById('duration-hint');
+  const carousel = document.getElementById('carousel');
+  const staticOn = !!(layout && layout.static);
+  if (chk && document.activeElement !== chk) chk.checked = staticOn;
+  if (pageDur) {
+    pageDur.disabled = staticOn;
+    if (!staticOn && (pageDur.value === '' || Number(pageDur.value) < 2)) {
+      pageDur.value = String(currentPage().duration || 5);
+    }
+  }
+  if (hint) {
+    hint.textContent = staticOn
+      ? 'Static mode: only the selected page stays on OLED. Duration is disabled.'
+      : 'Default 5s per page. Carousel advances automatically after each page’s duration.';
+  }
+  if (carousel) {
+    carousel.disabled = staticOn;
+    if (staticOn) {
+      const id = layout.static_page || pageId;
+      carousel.value = id;
+      layout.carousel = [id];
+    }
+  }
+}
+
+function setStaticMode(on) {
+  layout.static = !!on;
+  layout.mode = on ? 'static' : 'carousel';
+  if (on) {
+    layout.static_page = pageId;
+    layout.carousel = [pageId];
+  } else if (!layout.carousel || layout.carousel.length < 1) {
+    layout.carousel = [pageId];
+  }
+  syncStaticUi();
+  renderPageList();
 }
 
 function bounds(el) {
@@ -479,15 +558,23 @@ function canvasXY(e) {
 }
 
 function makePageBtn(id, listEl) {
-  const p = layout.pages[id];
+  const p = layout.pages[id] || { name: id };
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center' +
     (id === pageId ? ' active' : '');
-  btn.innerHTML = `<span>${p.name || id}</span>${isBuiltin(id) ? '<span class="badge text-bg-secondary">built-in</span>' : ''}`;
+  let badge = '';
+  if (isStock(id)) badge = '<span class="badge text-bg-info">stock</span>';
+  else if (isBuiltin(id)) badge = '<span class="badge text-bg-secondary">built-in</span>';
+  btn.innerHTML = `<span>${p.name || id}</span>${badge}`;
+  btn.title = isStock(id) ? (STOCK_HELP[id] || p.source || 'Native firmware page') : (p.name || id);
   btn.onclick = () => {
     pageId = id;
     selIdx = -1;
+    if (layout.static) {
+      layout.static_page = id;
+      layout.carousel = [id];
+    }
     renderPageList();
     renderProps();
     requestRender(true);
@@ -495,18 +582,37 @@ function makePageBtn(id, listEl) {
   listEl.appendChild(btn);
 }
 
+function updateCurrentPagesBanner() {
+  const el = document.getElementById('current-pages-banner');
+  if (!el) return;
+  const active = (spec && spec.current_oled_pages) || layout.carousel || [];
+  const bits = active.map((id) => {
+    if (isStock(id)) return `${id} ← stock (${(STOCK_SOURCES[id] || '').split('.').pop() || 'firmware'})`;
+    if (isBuiltin(id)) return `${id} ← designer`;
+    return `${id} ← custom`;
+  });
+  el.innerHTML = bits.length
+    ? `<strong>On device now:</strong> ${bits.join(' · ')}`
+    : 'No pages active on device yet — set carousel and Apply.';
+}
+
 function renderPageList() {
   ensureLayout();
+  const stockEl = document.getElementById('page-list-stock');
   const builtinEl = document.getElementById('page-list-builtin');
   const customEl = document.getElementById('page-list-custom');
   const legacyEl = document.getElementById('page-list');
 
   if (builtinEl && customEl) {
+    if (stockEl) {
+      stockEl.innerHTML = '';
+      STOCK_PAGE_IDS.forEach((id) => makePageBtn(id, stockEl));
+    }
     builtinEl.innerHTML = '';
     customEl.innerHTML = '';
     BUILTIN_PAGE_IDS.forEach((id) => makePageBtn(id, builtinEl));
     Object.keys(layout.pages)
-      .filter((id) => !BUILTIN_PAGE_IDS.includes(id))
+      .filter((id) => !BUILTIN_PAGE_IDS.includes(id) && !STOCK_PAGE_IDS.includes(id))
       .sort()
       .forEach((id) => makePageBtn(id, customEl));
   } else if (legacyEl) {
@@ -515,7 +621,9 @@ function renderPageList() {
   }
 
   const carousel = document.getElementById('carousel');
-  if (carousel) carousel.value = (layout.carousel || []).join(',');
+  if (carousel && !layout.static) carousel.value = (layout.carousel || []).join(',');
+  updateCurrentPagesBanner();
+  syncStaticUi();
 }
 
 function addCustomPage() {
@@ -551,20 +659,37 @@ async function resetCurrentPage() {
 
 function renderProps() {
   const box = document.getElementById('props');
-  if (selIdx < 0) {
-    const p = currentPage();
+  const p = currentPage();
+  const pageName = document.getElementById('page-name');
+  const pageDur = document.getElementById('page-duration');
+  if (pageName && document.activeElement !== pageName) pageName.value = p.name || pageId;
+  if (pageDur && document.activeElement !== pageDur) {
+    pageDur.value = String(p.duration != null ? p.duration : 5);
+  }
+  syncStaticUi();
+  renderElementList();
+
+  if (isStock(pageId)) {
+    const src = p.source || STOCK_SOURCES[pageId] || '';
     box.innerHTML = `
-      <p class="small text-secondary">Page: <strong>${pageId}</strong>${isBuiltin(pageId) ? ' (built-in)' : ''}</p>
-      <label class="form-label small">Name</label>
-      <input type="text" class="form-control form-control-sm mb-2" id="p-name" value="${p.name || ''}"/>
-      <label class="form-label small">Duration (s)</label>
-      <input type="number" class="form-control form-control-sm" id="p-dur" min="2" max="120" value="${p.duration || 5}"/>`;
-    document.getElementById('p-name').oninput = (e) => { p.name = e.target.value; renderPageList(); };
-    document.getElementById('p-dur').onchange = (e) => { p.duration = Number(e.target.value); };
+      <div class="alert alert-info small mb-2 py-2">
+        <strong>${p.name || pageId}</strong> is a <em>stock hardware</em> page.<br/>
+        Source: <code class="small">${src}</code><br/>
+        ${STOCK_HELP[pageId] || 'Rendered by firmware, not the canvas.'}<br/>
+        Add it to the carousel and Apply — canvas edits are ignored on device.
+      </div>
+      <p class="small text-secondary mb-0">Preview above is a placeholder. Test on OLED shows the real firmware page.</p>`;
+    return;
+  }
+
+  if (selIdx < 0) {
+    box.innerHTML = `
+      <p class="small text-secondary mb-0">Select an element on the canvas or from the list below the preview.</p>
+      <p class="small text-secondary mt-2 mb-0">Tip: use <strong>Test on OLED</strong> before <strong>Apply</strong>.</p>`;
     return;
   }
   const el = currentPage().elements[selIdx];
-  let html = `<p class="small mb-2"><span class="badge text-bg-primary">${el.type}</span></p>`;
+  let html = `<p class="small mb-2"><span class="badge text-bg-primary">${el.type}</span> #${selIdx}</p>`;
   if (el.type !== 'heart') {
     html += row('X', `<input type="number" class="form-control form-control-sm" data-k="x" min="0" max="127" value="${el.x}"/>`);
     html += row('Y', `<input type="number" class="form-control form-control-sm" data-k="y" min="0" max="63" value="${el.y}"/>`);
@@ -630,6 +755,7 @@ function renderProps() {
       }
       requestRender();
       if (k === 'font' || k === 'w' || k === 'h') renderProps();
+      else renderElementList();
     };
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', handler);
     if (k === 'align') inp.value = el.align || 'left';
@@ -643,6 +769,10 @@ function row(label, input) {
 }
 
 function addElement(type) {
+  if (isStock(pageId)) {
+    toast('Stock pages are firmware-native — canvas edits are ignored. Put them in the carousel instead.', true);
+    return;
+  }
   const el = { type, x: 4, y: 4 };
   if (type === 'text') Object.assign(el, { text: 'Label', font: 8, size: 1, w: 80, h: 12 });
   if (type === 'metric') Object.assign(el, { key: 'cpu_temperature', format: '{}', font: 8, size: 1, w: 80, h: 12 });
@@ -765,47 +895,178 @@ function wireUi() {
     requestRender(true);
   });
 
+  onClick('btn-dup-el', () => {
+    if (selIdx < 0) return;
+    const copy = JSON.parse(JSON.stringify(currentPage().elements[selIdx]));
+    copy.x = Math.min(127, (copy.x || 0) + 4);
+    copy.y = Math.min(63, (copy.y || 0) + 4);
+    currentPage().elements.push(copy);
+    selIdx = currentPage().elements.length - 1;
+    renderProps();
+    requestRender(true);
+  });
+
+  onClick('btn-snap', () => {
+    if (selIdx < 0) return;
+    const el = currentPage().elements[selIdx];
+    el.x = Math.round((el.x || 0) / 2) * 2;
+    el.y = Math.round((el.y || 0) / 2) * 2;
+    if (el.w != null) el.w = Math.round(el.w / 2) * 2;
+    if (el.h != null) el.h = Math.round(el.h / 2) * 2;
+    renderProps();
+    requestRender(true);
+  });
+
   onClick('btn-add-page', addCustomPage);
   onClick('btn-add-page-full', addCustomPage);
   onClick('btn-reset-page', () => { resetCurrentPage(); });
   onClick('btn-device-preview', () => { previewOnDevice(); });
 
-  onClick('btn-test-oled', async () => {
-    const btn = document.getElementById('btn-test-oled');
-    if (btn?.disabled) return;
+  async function runTestOled() {
+    const buttons = ['btn-test-oled', 'btn-test-oled-2']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    if (buttons.some((b) => b.disabled)) return;
     const carouselEl = document.getElementById('carousel');
     const carousel = (carouselEl?.value || '')
       .split(',').map((s) => s.trim()).filter(Boolean);
     layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
     try {
-      if (btn) btn.disabled = true;
+      buttons.forEach((b) => { b.disabled = true; });
       await api('/test-oled-page', 'POST', {
         page: pageId,
         layout,
         duration: 5,
       });
-      toast(`OLED showing "${pageId}" for 5 seconds (live edits, not saved)`);
+      toast(`Testing "${pageId}" on OLED for 5s (not saved)`);
     } catch (e) {
       toast(e.message, true);
     } finally {
-      if (btn) btn.disabled = false;
+      buttons.forEach((b) => { b.disabled = false; });
     }
-  });
+  }
 
-  onClick('btn-apply', async () => {
+  async function runApply() {
     const carouselEl = document.getElementById('carousel');
-    const carousel = (carouselEl?.value || '')
-      .split(',').map((s) => s.trim()).filter(Boolean);
-    layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
+    if (layout.static) {
+      layout.static_page = pageId;
+      layout.carousel = [pageId];
+      if (carouselEl) carouselEl.value = pageId;
+    } else {
+      const carousel = (carouselEl?.value || '')
+        .split(',').map((s) => s.trim()).filter(Boolean);
+      layout.carousel = carousel.length ? carousel : Object.keys(layout.pages);
+    }
+    // Ensure every carousel page has a duration (default 5s).
+    (layout.carousel || []).forEach((id) => {
+      if (layout.pages[id] && (layout.pages[id].duration == null || layout.pages[id].duration === '')) {
+        layout.pages[id].duration = 5;
+      }
+    });
     const status = document.getElementById('save-status');
+    const buttons = ['btn-apply', 'btn-apply-2']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
     if (status) status.textContent = 'Saving…';
     try {
-      await api('/apply-oled-layout', 'POST', { layout });
-      if (status) status.textContent = 'Applied';
-      toast('Layout applied — OLED will use designer pages');
+      buttons.forEach((b) => { b.disabled = true; });
+      const data = await api('/apply-oled-layout', 'POST', { layout });
+      layout = data.layout || layout;
+      if (spec) spec.current_oled_pages = data.oled_pages || layout.carousel;
+      ensureLayout();
+      renderPageList();
+      const mode = layout.static ? `static:${layout.static_page || pageId}` : `rotate:${(layout.carousel || []).join(',')}`;
+      if (status) status.textContent = `Applied ✓ ${mode}`;
+      toast(layout.static
+        ? `Applied static page "${layout.static_page || pageId}"`
+        : `Applied — pages rotate by duration (default 5s): ${(layout.carousel || []).join(', ')}`);
     } catch (e) {
       if (status) status.textContent = '';
       toast(e.message, true);
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+
+  onClick('btn-test-oled', runTestOled);
+  onClick('btn-test-oled-2', runTestOled);
+  onClick('btn-apply', runApply);
+  onClick('btn-apply-2', runApply);
+
+  const pageName = document.getElementById('page-name');
+  const pageDur = document.getElementById('page-duration');
+  const chkStatic = document.getElementById('chk-static');
+  if (pageName) {
+    pageName.addEventListener('input', (e) => {
+      currentPage().name = e.target.value;
+      renderPageList();
+    });
+  }
+  if (pageDur) {
+    pageDur.addEventListener('change', (e) => {
+      if (layout.static) return;
+      let n = Number(e.target.value);
+      if (!Number.isFinite(n) || n < 2) n = 5;
+      if (n > 120) n = 120;
+      currentPage().duration = n;
+      e.target.value = String(n);
+    });
+  }
+  if (chkStatic) {
+    chkStatic.addEventListener('change', (e) => {
+      setStaticMode(e.target.checked);
+      if (e.target.checked) {
+        toast(`Static: only "${pageId}" will show after Apply`);
+      } else {
+        toast('Carousel mode: pages rotate by duration after Apply');
+      }
+    });
+  }
+
+  document.querySelectorAll('.pm-preset').forEach((btn) => {
+    btn.addEventListener('click', () => applyCarouselPreset(btn.dataset.preset));
+  });
+
+  document.querySelectorAll('.pm-zoom').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pm-zoom').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      setCanvasZoom(Number(btn.dataset.zoom) || 4);
+    });
+  });
+
+  const grid = document.getElementById('chk-grid');
+  const frame = document.getElementById('oled-frame');
+  if (grid && frame) {
+    const syncGrid = () => frame.classList.toggle('show-grid', !!grid.checked);
+    grid.addEventListener('change', syncGrid);
+    syncGrid();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!canvas) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+    if (selIdx < 0) return;
+    const el = currentPage().elements[selIdx];
+    const step = e.shiftKey ? 4 : 1;
+    let moved = false;
+    if (e.key === 'ArrowLeft') { el.x = Math.max(0, (el.x || 0) - step); moved = true; }
+    if (e.key === 'ArrowRight') { el.x = Math.min(127, (el.x || 0) + step); moved = true; }
+    if (e.key === 'ArrowUp') { el.y = Math.max(0, (el.y || 0) - step); moved = true; }
+    if (e.key === 'ArrowDown') { el.y = Math.min(63, (el.y || 0) + step); moved = true; }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      currentPage().elements.splice(selIdx, 1);
+      selIdx = -1;
+      renderProps();
+      requestRender(true);
+      return;
+    }
+    if (moved) {
+      e.preventDefault();
+      renderProps();
+      requestRender();
     }
   });
 
@@ -813,6 +1074,53 @@ function wireUi() {
   const iconSearch = document.getElementById('icon-search');
   if (iconPack) iconPack.addEventListener('change', renderIconGrid);
   if (iconSearch) iconSearch.addEventListener('input', renderIconGrid);
+}
+
+function renderElementList() {
+  const list = document.getElementById('element-list');
+  if (!list || !layout) return;
+  const els = currentPage().elements || [];
+  list.innerHTML = '';
+  if (!els.length) {
+    list.innerHTML = '<li class="list-group-item text-secondary">No elements yet — use the toolbar above.</li>';
+    return;
+  }
+  els.forEach((el, idx) => {
+    const li = document.createElement('li');
+    li.className = `list-group-item${idx === selIdx ? ' active' : ''}`;
+    const label = el.type === 'text' ? (el.text || 'text')
+      : el.type === 'metric' ? (el.key || 'metric')
+      : el.type === 'icon' ? (el.icon || 'icon')
+      : el.type;
+    li.innerHTML = `<span>${idx}. ${el.type}</span><span class="text-secondary">${label}</span>`;
+    li.onclick = () => {
+      selIdx = idx;
+      renderProps();
+      requestRender(true);
+    };
+    list.appendChild(li);
+  });
+}
+
+function setCanvasZoom(z) {
+  if (!canvas) return;
+  const zoom = clamp(z, 2, 6);
+  canvas.style.width = `${128 * zoom}px`;
+  canvas.style.height = `${64 * zoom}px`;
+}
+
+function applyCarouselPreset(name) {
+  const carouselEl = document.getElementById('carousel');
+  if (!carouselEl) return;
+  let ids = [];
+  if (name === 'stock') ids = [...STOCK_PAGE_IDS];
+  else if (name === 'full') ids = [...BUILTIN_PAGE_IDS];
+  else if (name === 'minimal') ids = ['home', 'storage', 'heart'];
+  else if (name === 'server') ids = ['home', 'storage', 'network', 'cpu', 'ram', 'services', 'heart'];
+  else if (name === 'current') ids = [pageId];
+  carouselEl.value = ids.join(', ');
+  layout.carousel = ids;
+  toast(`Carousel preset: ${name}`);
 }
 
 function showInitError(msg) {

@@ -9,59 +9,72 @@
   <link rel="stylesheet" href="/oled-designer/styles.css"/>
 </head>
 <body class="pm-body">
-  <nav class="navbar navbar-dark bg-dark border-bottom border-secondary sticky-top">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="/oled-designer"><i class="bi bi-display me-2"></i>OLED Designer</a>
-      <div class="d-flex gap-2 ms-auto align-items-center">
-        <span id="spec-badge" class="badge text-bg-secondary">128×64 · 2:1</span>
-        <span id="save-status" class="text-secondary small"></span>
-        <button type="button" class="btn btn-outline-info btn-sm" id="btn-device-preview" title="One-shot preview using real OLED fonts">
-          <i class="bi bi-display me-1"></i>Device preview
-        </button>
-        <button type="button" class="btn btn-warning btn-sm" id="btn-test-oled" title="Show this page on physical OLED for 5 seconds">
-          <i class="bi bi-play-fill me-1"></i>Test on OLED
-        </button>
-        <button type="button" class="btn btn-success btn-sm" id="btn-apply">
-          <i class="bi bi-check2-circle me-1"></i>Apply to device
-        </button>
-        <a class="btn btn-outline-light btn-sm" href="/control">Control</a>
-        <a class="btn btn-outline-light btn-sm" href="/">Dashboard</a>
-      </div>
+  <!-- Always-visible action bar (works inside dashboard iframe) -->
+  <div class="pm-actionbar sticky-top">
+    <div class="pm-actionbar-left">
+      <strong class="pm-actionbar-title"><i class="bi bi-display me-1"></i>OLED Designer</strong>
+      <span id="spec-badge" class="badge text-bg-secondary">128×64</span>
+      <span id="save-status" class="pm-save-status"></span>
     </div>
-  </nav>
-
-  <div class="alert alert-info border-0 rounded-0 mb-0 py-2 small">
-    Sharp preview (real OLED fonts). <strong>Test on OLED</strong> = 5s on physical screen. <strong>Apply</strong> saves permanently.
+    <div class="pm-actionbar-right">
+      <button type="button" class="btn btn-outline-info btn-sm" id="btn-device-preview" title="Sharp PNG preview">
+        <i class="bi bi-eye me-1"></i>Preview
+      </button>
+      <button type="button" class="btn btn-warning btn-sm" id="btn-test-oled" title="Show current page on physical OLED for 5 seconds (does not save)">
+        <i class="bi bi-play-fill me-1"></i>Test on OLED
+      </button>
+      <button type="button" class="btn btn-success btn-sm" id="btn-apply" title="Save layout + carousel permanently">
+        <i class="bi bi-check2-circle me-1"></i>Apply to device
+      </button>
+    </div>
   </div>
 
-  <div class="container-fluid py-3">
+  <div class="alert alert-info border-0 rounded-0 mb-0 py-2 small pm-hint">
+    Edit → <strong>Test on OLED</strong> (5s preview) → <strong>Apply</strong> to save.
+    Pages auto-rotate by <strong>Duration</strong> (default 5s). Enable <strong>Static page</strong> to lock one page.
+  </div>
+
+  <div class="container-fluid py-3 pm-main">
     <div class="row g-3">
-      <div class="col-12 col-lg-2">
+      <div class="col-12 col-xl-2 col-lg-3">
         <div class="card border-secondary pm-card h-100">
           <div class="card-header py-2 d-flex justify-content-between align-items-center">
             <strong class="small">Pages</strong>
             <button type="button" class="btn btn-primary btn-sm" id="btn-add-page" title="Add page"><i class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-2">
-            <p class="small text-secondary mb-1">Built-in</p>
+            <div id="current-pages-banner" class="alert alert-secondary py-2 px-2 small mb-2">
+              Loading current OLED pages…
+            </div>
+            <p class="small text-secondary mb-1">Stock (hardware)</p>
+            <ul id="page-list-stock" class="list-group list-group-flush pm-page-list mb-2"></ul>
+            <p class="small text-secondary mb-1">Built-in (editable)</p>
             <ul id="page-list-builtin" class="list-group list-group-flush pm-page-list mb-2"></ul>
             <p class="small text-secondary mb-1">Custom</p>
             <ul id="page-list-custom" class="list-group list-group-flush pm-page-list mb-2"></ul>
             <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-2" id="btn-add-page-full"><i class="bi bi-plus-circle me-1"></i>Add page</button>
             <button type="button" class="btn btn-outline-secondary btn-sm w-100 mb-2" id="btn-reset-page">Reset page to default</button>
             <hr class="border-secondary my-2"/>
+            <label class="form-label small text-secondary mb-1">Carousel presets</label>
+            <div class="d-grid gap-1 mb-2">
+              <button type="button" class="btn btn-outline-light btn-sm pm-preset" data-preset="stock">Stock Max</button>
+              <button type="button" class="btn btn-outline-light btn-sm pm-preset" data-preset="full">All editable</button>
+              <button type="button" class="btn btn-outline-light btn-sm pm-preset" data-preset="minimal">Minimal</button>
+              <button type="button" class="btn btn-outline-light btn-sm pm-preset" data-preset="server">Server</button>
+              <button type="button" class="btn btn-outline-light btn-sm pm-preset" data-preset="current">Current only</button>
+            </div>
             <label class="form-label small text-secondary mb-1">Carousel order</label>
             <textarea id="carousel" class="form-control form-control-sm font-monospace" rows="4"
-              placeholder="home,custom_1,heart"></textarea>
-            <p class="text-secondary small mt-1 mb-0">Built-in ids: home, storage, network, cpu, gpu, fans, ram, temps, services, heart</p>
+              placeholder="mix,performance,ips,disk"></textarea>
+            <p class="text-secondary small mt-1 mb-0">Comma-separated page ids shown on the physical OLED. Stock ids use firmware pages; others use designer layouts.</p>
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-lg-6">
+      <div class="col-12 col-xl-6 col-lg-5">
         <div class="card border-secondary pm-card">
           <div class="card-header d-flex flex-wrap gap-2 align-items-center py-2">
-            <div class="btn-group btn-group-sm">
+            <div class="btn-group btn-group-sm flex-wrap">
               <button type="button" class="btn btn-outline-light" data-add="text">Text</button>
               <button type="button" class="btn btn-outline-light" data-add="metric">Metric</button>
               <button type="button" class="btn btn-outline-light" data-add="icon">Icon</button>
@@ -70,22 +83,79 @@
               <button type="button" class="btn btn-outline-light" data-add="gauge">Gauge</button>
               <button type="button" class="btn btn-outline-light" data-add="heart">Heart</button>
             </div>
-            <button type="button" class="btn btn-outline-danger btn-sm ms-auto" id="btn-del-el">Delete</button>
+            <div class="ms-auto d-flex flex-wrap gap-1">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-dup-el" title="Duplicate selected">Duplicate</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-snap" title="Snap selected to 2px grid">Snap</button>
+              <button type="button" class="btn btn-outline-danger btn-sm" id="btn-del-el">Delete</button>
+            </div>
           </div>
           <div class="card-body d-flex flex-column align-items-center">
-            <div class="oled-frame">
+            <div class="oled-zoom mb-2">
+              <span class="small text-secondary me-2">Zoom</span>
+              <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary pm-zoom" data-zoom="2">2×</button>
+                <button type="button" class="btn btn-outline-secondary pm-zoom active" data-zoom="4">4×</button>
+                <button type="button" class="btn btn-outline-secondary pm-zoom" data-zoom="5">5×</button>
+              </div>
+              <label class="form-check form-check-inline small text-secondary ms-3 mb-0">
+                <input class="form-check-input" type="checkbox" id="chk-grid" checked/>
+                Grid
+              </label>
+            </div>
+            <div class="oled-frame" id="oled-frame">
               <canvas id="oled" width="128" height="64"></canvas>
             </div>
-            <p class="text-secondary small mt-2 mb-0">Sharp preview · drag to move · corner resize · Test on OLED = physical 5s</p>
+            <p class="text-secondary small mt-2 mb-3">Drag to move · corner handle to resize · arrow keys nudge 1px</p>
+
+            <!-- Secondary Test / Apply under canvas so they never get lost -->
+            <div class="pm-canvas-actions">
+              <button type="button" class="btn btn-warning" id="btn-test-oled-2">
+                <i class="bi bi-play-fill me-1"></i>Test on OLED (5s)
+              </button>
+              <button type="button" class="btn btn-success" id="btn-apply-2">
+                <i class="bi bi-check2-circle me-1"></i>Apply to device
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border-secondary pm-card mt-3">
+          <div class="card-header py-2"><strong class="small">Elements on this page</strong></div>
+          <div class="card-body p-2">
+            <ul id="element-list" class="list-group list-group-flush pm-el-list"></ul>
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-lg-4">
+      <div class="col-12 col-xl-4 col-lg-4">
         <div class="card border-secondary pm-card mb-3">
-          <div class="card-header py-2"><strong class="small">Properties</strong></div>
+          <div class="card-header py-2"><strong class="small">Page</strong></div>
+          <div class="card-body">
+            <div class="row g-2 mb-2">
+              <div class="col-8">
+                <label class="form-label small text-secondary mb-1">Name</label>
+                <input type="text" class="form-control form-control-sm" id="page-name"/>
+              </div>
+              <div class="col-4">
+                <label class="form-label small text-secondary mb-1">Duration (s)</label>
+                <input type="number" class="form-control form-control-sm" id="page-duration" min="2" max="120" value="5" title="How long this page stays on OLED before next"/>
+              </div>
+            </div>
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="chk-static"/>
+              <label class="form-check-label small" for="chk-static">
+                Static page — only this page on OLED (no auto-rotate)
+              </label>
+            </div>
+            <p class="text-secondary small mb-0" id="duration-hint">
+              Default 5s per page. Carousel advances automatically after each page’s duration.
+            </p>
+          </div>
+        </div>
+        <div class="card border-secondary pm-card mb-3">
+          <div class="card-header py-2"><strong class="small">Element properties</strong></div>
           <div class="card-body" id="props">
-            <p class="text-secondary small mb-0">Select an element on the canvas.</p>
+            <p class="text-secondary small mb-0">Select an element on the canvas or from the list.</p>
           </div>
         </div>
         <div class="card border-secondary pm-card">
@@ -93,7 +163,7 @@
             <strong class="small">Icons</strong>
             <select id="icon-pack" class="form-select form-select-sm w-auto">
               <option value="builtin">Built-in 14×14</option>
-              <option value="bootstrap">Bootstrap mapped 16×16</option>
+              <option value="bootstrap">Bootstrap mapped</option>
             </select>
           </div>
           <div class="card-body p-2">

@@ -11,12 +11,23 @@ from werkzeug.serving import make_server
 
 from .data_logger import DataLogger
 from .database import Database
-from .utils import log_error, merge_dict
-
+from .utils import log_error
 import logging
-from sf_rpi_status import get_disks, get_ips
+from sf_rpi_status import get_disks, get_ips # deprecated
+from sf_rpi_status import shutdown as __shutdown__
+from sf_rpi_status import reboot as __reboot__
 
 DEBUG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+AVAILABLE_OLED_PAGES = []
+AVAILABLE_PIPOWER5_EVENT = [
+    "battery_activated",
+    "low_battery",
+    "power_disconnected",
+    "power_restored",
+    "power_insufficient",
+    "battery_critical_shutdown",
+    "battery_voltage_critical_shutdown",
+]
 
 __package_name__ = __name__.split('.')[0]
 __log_path__ = '/var/log/pironman5'
@@ -25,10 +36,12 @@ __api_prefix__ = '/api/v1.0'
 __host__ = '0.0.0.0'
 __port__ = 34001
 __log__ = None
+__restart_service__ = lambda: None
 
 __db__ = None
-__config__ = {}
+__data_logger__ = None
 __app__ = flask.Flask(__name__, static_folder=__www_path__)
+
 __app__.logger.setLevel(logging.WARN)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
@@ -36,52 +49,14 @@ __cors__ = CORS(__app__)
 __app__.config['CORS_HEADERS'] = 'Content-Type'
 __device_info__ = {}
 __mqtt_connected__ = False
+__enable_history__ = False
 
-__on_outside_config_changed__ = lambda config: None
-__on_inside_config_changed__ = lambda config: None
-__pm_auto_runtime_update__ = None
-
-
-def _pm_auto_runtime_update(patch):
-    """Best-effort runtime-only update for PMAuto; returns whether it was handled."""
-    if __pm_auto_runtime_update__ is None:
-        return False
-    __pm_auto_runtime_update__(patch)
-    return True
-
-
-def _control_get_history(n=1):
-    if __db__ is None:
-        return {}
-    data = __db__.get('history', n=n)
-    return data if isinstance(data, dict) else {}
-
-
-def _register_control_center():
-    getters = {
-        'get_config': lambda: __config__,
-        'get_device_info': lambda: __device_info__,
-        'on_config_changed': lambda config: __on_config_changed__(config),
-        'apply_system_runtime': lambda patch: __on_outside_config_changed__({'system': patch}),
-        'pm_auto_runtime_update': _pm_auto_runtime_update,
-        'get_history': _control_get_history,
-        'get_disks': get_disks,
-        'get_ips': get_ips,
-    }
-    from .control_routes import register_control_routes
-    register_control_routes(__app__, __api_prefix__, __www_path__, getters)
-    from .oled_designer_routes import register_oled_designer_routes
-    register_oled_designer_routes(__app__, __api_prefix__, __www_path__, getters)
-
-
-def __on_config_changed__(config):
-    global __config__, __on_outside_config_changed__, __on_inside_config_changed__
-    __on_outside_config_changed__(config)
-    __on_inside_config_changed__(config)
-    __config__ = merge_dict(__config__, config)
-
-
-_register_control_center()
+__read_data__ = lambda: {}
+__get_ip_data__ = lambda: {}
+__read_config__ = lambda: {}
+__on_config_changed__ = lambda config: None
+__test_smtp__ = lambda: False
+__play_pipower5_buzzer__ = lambda: None
 
 def on_mqtt_connected(client, userdata, flags, rc):
     global __mqtt_connected__
@@ -145,21 +120,59 @@ def get_log_level(line):
 @__app__.route('/')
 @cross_origin()
 def dashboard():
-    with open(f'{__app__.static_folder}/index.html') as f:
-        return f.read()
+    return send_from_directory(__app__.static_folder, 'index.html')
 
-# Host static files for dashboard page (after /control routes — see _register_control_center)
-@__app__.route('/<path:filename>')
+# Host dashboard css
+@__app__.route('/index.css')
 @cross_origin()
-def serve_static(filename):
-    if filename.startswith('control/') or filename == 'control':
-        return send_from_directory(f'{__www_path__}/control', filename.split('/')[-1])
-    path = __app__.static_folder
-    if '/' in filename:
-        items = filename.split('/')
-        filename = items[-1]
-        path = path + '/' + '/'.join(items[:-1])
-    return send_from_directory(path, filename)
+def dashboard_css():
+    return send_from_directory(__app__.static_folder, 'index.css')
+
+# Host favicon
+@__app__.route('/favicon.ico')
+@cross_origin()
+def favicon():
+    return send_from_directory(__app__.static_folder, 'favicon.ico')
+
+# Host static files for dashboard page
+@__app__.route('/static/<path:path>')
+@cross_origin()
+def serve_static(path):
+    return send_from_directory(f"{__app__.static_folder}/static", path)
+
+@__app__.route('/oled-nav-patch.js')
+@cross_origin()
+def oled_nav_patch_js():
+    return send_from_directory(__app__.static_folder, 'oled-nav-patch.js')
+
+@__app__.route('/oled-customize')
+@__app__.route('/oled-customize/')
+@cross_origin()
+def oled_customize_index():
+    return send_from_directory(f"{__app__.static_folder}/oled-customize", 'index.html')
+
+@__app__.route('/oled-customize/<path:filename>')
+@cross_origin()
+def oled_customize_assets(filename):
+    return send_from_directory(f"{__app__.static_folder}/oled-customize", filename)
+
+def _register_oled_designer():
+    from .oled_designer_routes import register_oled_designer_routes
+    register_oled_designer_routes(
+        __app__,
+        __api_prefix__,
+        __www_path__,
+        {
+            'get_config': lambda: __read_config__() or {},
+            'on_config_changed': lambda config: __on_config_changed__(config),
+            'apply_system_runtime': lambda patch: __on_config_changed__(patch if 'system' in patch else {'system': patch}),
+            'pm_auto_runtime_update': None,
+            'get_history': lambda n=1: (__read_data__() or {}),
+            'get_device_info': lambda: __device_info__,
+        },
+    )
+
+_register_oled_designer()
 
 # host API
 @__app__.route(f'{__api_prefix__}/get-version')
@@ -218,13 +231,36 @@ def test_mqtt():
         result['error'] = error
     return result
 
+@__app__.route(f'{__api_prefix__}/get-data')
+@cross_origin()
+def get_data():
+    try:
+        if __enable_history__ == False:
+            data = __data_logger__.get_data()
+        else:
+            num = request.args.get("n")
+            if num is None:
+                num = 1
+            else:
+                num = int(num)
+            data = __db__.get("history", n=num)
+        return {"status": True, "data": data}
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
 @__app__.route(f'{__api_prefix__}/get-history')
 @cross_origin()
 def get_history():
     try:
-        num = request.args.get("n")
-        num = int(num)
-        data = __db__.get("history", n=num)
+        if __enable_history__ == False:
+            data = __data_logger__.get_data()
+        else:
+            num = request.args.get("n")
+            if num is None:
+                num = 1
+            else:
+                num = int(num)
+            data = __db__.get("history", n=num)
         return {"status": True, "data": data}
     except Exception as e:
         return {"status": False, "error": str(e)}
@@ -233,18 +269,21 @@ def get_history():
 @cross_origin()
 def get_time_range():
     try:
-        start = request.args.get("start")
-        end = request.args.get("end")
-        key = request.args.get("key")
-        data = __db__.get_data_by_time_range("history", start, end, key)
-        return {"status": True, "data": data}
+        if __enable_history__:
+            start = request.args.get("start")
+            end = request.args.get("end")
+            key = request.args.get("key")
+            data = __db__.get_data_by_time_range("history", start, end, key)
+            return {"status": True, "data": data}
+        else:
+            return {"status": False, "error": "History is not enabled"}
     except Exception as e:
         return {"status": False, "error": str(e)}
 
 @__app__.route(f'{__api_prefix__}/get-config')
 @cross_origin()
 def get_config():
-    return {"status": True, "data": __config__}
+    return {"status": True, "data": __read_config__()}
 
 @__app__.route(f'{__api_prefix__}/get-log-list')
 @cross_origin()
@@ -285,11 +324,13 @@ def get_default_on():
     default_on = __db__.get("history", "default_on")
     return {"status": True, "data": default_on}
 
+# deprecated
 @__app__.route(f'{__api_prefix__}/get-disk-list')
 @cross_origin()
 def get_disk_list():
     return {"status": True, "data": get_disks()}
 
+# deprecated
 @__app__.route(f'{__api_prefix__}/get-network-interface-list')
 @cross_origin()
 def get_network_interface_list():
@@ -357,7 +398,9 @@ def set_rgb_enable():
 @__app__.route(f'{__api_prefix__}/set-rgb-led-count', methods=['POST'])
 @cross_origin()
 def set_rgb_led_count():
-    led_count = request.json["led-count"]
+    led_count = request.json["led_count"]
+    if "rgb_led_count_min" in __read_config__()["system"] and led_count < __read_config__()["system"]["rgb_led_count_min"]:
+        return {"status": False, "error": f"[ERROR] led count {led_count} not found, available led count: >= {__read_config__()['system']['rgb_led_count_min']}"}
     __on_config_changed__({'system': {'rgb_led_count': led_count}})
     return {"status": True, "data": "OK"}
 
@@ -373,6 +416,55 @@ def set_rgb_style():
 def set_rgb_speed():
     speed = request.json["speed"]
     __on_config_changed__({'system': {'rgb_speed': speed}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-enable', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_enable():
+    enable = request.json["enable"]
+    __on_config_changed__({'system': {'rgb_matrix_enable': enable}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-style', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_style():
+    style = request.json["style"]
+    __on_config_changed__({'system': {'rgb_matrix_style': style}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-color', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_color():
+    color = request.json["color"]
+    __on_config_changed__({'system': {'rgb_matrix_color': color}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-color2', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_color2():
+    color = request.json["color"]
+    __on_config_changed__({'system': {'rgb_matrix_color2': color}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-brightness', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_brightness():
+    brightness = request.json["brightness"]
+    __on_config_changed__({'system': {'rgb_matrix_brightness': brightness}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-rgb-matrix-speed', methods=['POST'])
+@cross_origin()
+def set_rgb_matrix_speed():
+    speed = request.json["speed"]
+    __on_config_changed__({'system': {'rgb_matrix_speed': speed}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-debug-level', methods=['POST'])
+@cross_origin()
+def set_debug_level():
+    level = request.json["level"]
+    __on_config_changed__({'system': {'debug_level': level}})
     return {"status": True, "data": "OK"}
 
 @__app__.route(f'{__api_prefix__}/set-oled-sleep-timeout', methods=['POST'])
@@ -393,6 +485,7 @@ def set_oled_enable():
     __on_config_changed__({'system': {'oled_enable': enable}})
     return {"status": True, "data": "OK"}
 
+# deprecated
 @__app__.route(f'{__api_prefix__}/set-oled-disk', methods=['POST'])
 @cross_origin()
 def set_oled_disk():
@@ -407,6 +500,7 @@ def set_oled_disk():
     __on_config_changed__({'system': {'oled_disk': disk}})
     return {"status": True, "data": "OK"}
 
+# deprecated
 @__app__.route(f'{__api_prefix__}/set-oled-network-interface', methods=['POST'])
 @cross_origin()
 def set_oled_network_interface():
@@ -430,9 +524,180 @@ def set_oled_rotation():
     __on_config_changed__({'system': {'oled_rotation': rotation}})
     return {"status": True, "data": "OK"}
 
+@__app__.route(f'{__api_prefix__}/set-oled-pages', methods=['POST'])
+@cross_origin()
+def set_oled_pages():
+    pages = request.json["pages"]
+    if pages is None:
+        return {"status": False, "error": "[ERROR] pages not found"}
+    if isinstance(pages, str):
+        pages = [p.strip() for p in pages.split(',') if p.strip()]
+    for page in pages:
+        if page not in AVAILABLE_OLED_PAGES and not str(page).startswith('custom_'):
+            return {"status": False, "error": f"[ERROR] page {page} not found, available pages: {AVAILABLE_OLED_PAGES}"}
+    __on_config_changed__({'system': {'oled_pages': pages}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/get-oled-customize', methods=['GET'])
+@cross_origin()
+def get_oled_customize():
+    """Convenience payload for the OLED Customize tab (stock Max-compatible)."""
+    config = __read_config__() or {}
+    system = config.get('system', {}) if isinstance(config, dict) else {}
+    return {
+        "status": True,
+        "data": {
+            "available_pages": list(AVAILABLE_OLED_PAGES),
+            "oled_pages": system.get('oled_pages', list(AVAILABLE_OLED_PAGES)),
+            "oled_enable": system.get('oled_enable', True),
+            "oled_rotation": system.get('oled_rotation', 0),
+            "oled_sleep_timeout": system.get('oled_sleep_timeout', 0),
+            "device_info": __device_info__,
+        },
+    }
+
+@__app__.route(f'{__api_prefix__}/set-send-email-on', methods=['POST'])
+@cross_origin()
+def set_send_email_on():
+    if "on" not in request.json:
+        return {"status": False, "error": "[ERROR] on not found"}
+    on = request.json["on"]
+    if on is None:
+        return {"status": False, "error": "[ERROR] on not found"}
+    for item in on:
+        if item not in AVAILABLE_PIPOWER5_EVENT:
+            return {"status": False, "error": f"[ERROR] on {item} not found, available values: {AVAILABLE_PIPOWER5_EVENT}"}
+    __on_config_changed__({'system': {'send_email_on': on}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-send-email-to', methods=['POST'])
+@cross_origin()
+def set_send_email_to():
+    if "to" not in request.json:
+        return {"status": False, "error": "[ERROR] to not found"}
+    to = request.json["to"]
+    if to is None:
+        return {"status": False, "error": "[ERROR] to not found"}
+    __on_config_changed__({'system': {'send_email_to': to}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-smtp-server', methods=['POST'])
+@cross_origin()
+def set_smtp_server():
+    if "server" not in request.json:
+        return {"status": False, "error": "[ERROR] server not found"}
+    server = request.json["server"]
+    if server is None:
+        return {"status": False, "error": "[ERROR] server not found"}
+    __on_config_changed__({'system': {'smtp_server': server}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-smtp-port', methods=['POST'])
+@cross_origin()
+def set_smtp_port():
+    if "port" not in request.json:
+        return {"status": False, "error": "[ERROR] port not found"}
+    port = request.json["port"]
+    if not isinstance(port, int) or port <= 0:
+        return {"status": False, "error": "[ERROR] port must be a positive integer"}
+    __on_config_changed__({'system': {'smtp_port': port}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-smtp-email', methods=['POST'])
+@cross_origin()
+def set_smtp_email():
+    if "email" not in request.json:
+        return {"status": False, "error": "[ERROR] email not found"}
+    email = request.json["email"]
+    if email is None:
+        return {"status": False, "error": "[ERROR] email not found"}
+    __on_config_changed__({'system': {'smtp_email': email}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-smtp-password', methods=['POST'])
+@cross_origin()
+def set_smtp_password():
+    if "password" not in request.json:
+        return {"status": False, "error": "[ERROR] password not found"}
+    smtp_password = request.json["password"]
+    if smtp_password is None:
+        return {"status": False, "error": "[ERROR] password not found"}
+    __on_config_changed__({'system': {'smtp_password': smtp_password}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-smtp-security', methods=['POST'])
+@cross_origin()
+def set_smtp_security():
+    if "security" not in request.json:
+        return {"status": False, "error": "[ERROR] security not found"}
+    security = request.json["security"]
+    if security is None:
+        return {"status": False, "error": "[ERROR] security not found"}
+    if security not in ['none', 'ssl', 'tls']:
+        return {"status": False, "error": "[ERROR] security must be 'none', 'ssl' or 'tls'"}
+    __on_config_changed__({'system': {'smtp_security': security}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/test-smtp', methods=['POST', 'GET'])
+@cross_origin()
+def test_smtp():
+    result = __test_smtp__()
+    if isinstance(result, (tuple, list)) and len(result) >= 2:
+        status, error = result[0], result[1]
+    elif result:
+        status, error = True, ""
+    else:
+        status, error = False, "SMTP test failed"
+    if status:
+        return {"status": status, "data": "OK"}
+    else:
+        return {"status": status, "error": f'{error}'}
+
+@__app__.route(f'{__api_prefix__}/set-pipower5-buzz-on', methods=['POST'])
+@cross_origin()
+def set_pipower5_buzz_on():
+    if "on" not in request.json:
+        return {"status": False, "error": "[ERROR] on not found"}
+    on = request.json["on"]
+    if on is None:
+        return {"status": False, "error": "[ERROR] on not found"}
+    for item in on:
+        if item not in AVAILABLE_PIPOWER5_EVENT:
+            return {"status": False, "error": f"[ERROR] on {item} not found, available values: {AVAILABLE_PIPOWER5_EVENT}"}
+    __on_config_changed__({'system': {'pipower5_buzz_on': on}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-pipower5-buzzer-volume', methods=['POST'])
+@cross_origin()
+def set_pipower5_buzzer_volume():
+    if "volume" not in request.json:
+        return {"status": False, "error": "[ERROR] volume not found"}
+    volume = request.json["volume"]
+    if volume is None:
+        return {"status": False, "error": "[ERROR] volume not found"}
+    if volume < 0 or volume > 10:
+        return {"status": False, "error": "[ERROR] volume must be between 0 and 100"}
+    __on_config_changed__({'system': {'pipower5_buzzer_volume': volume}})
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/play-pipower5-buzzer', methods=['POST'])
+@cross_origin()
+def play_pipower5_buzzer():
+    if "event" not in request.json:
+        return {"status": False, "error": "[ERROR] event not found"}
+    event = request.json["event"]
+    if event is None:
+        return {"status": False, "error": "[ERROR] event not found"}
+    if event not in AVAILABLE_PIPOWER5_EVENT:
+        return {"status": False, "error": f"[ERROR] event {event} not found, available values: {AVAILABLE_PIPOWER5_EVENT}"}
+    __play_pipower5_buzzer__(event)
+    return {"status": True, "data": "OK"}
+
 @__app__.route(f'{__api_prefix__}/clear-history', methods=['POST', 'GET'])
 @cross_origin()
 def clear_history():
+    if __enable_history__ == False:
+        return {"status": False, "error": "History is not enabled"}
     __db__.clear_measurement('history')
     return {"status": True, "data": "OK"}
 
@@ -450,10 +715,89 @@ def delete_log_file():
     except Exception as e:
         return {"status": False, "error": str(e)}
 
+@__app__.route(f'{__api_prefix__}/start-ups-power-failure-simulation', methods=['POST', 'GET'])
+@cross_origin()
+def set_ups_vbus_enable():
+    import subprocess
+    time = request.json["time"]
+    print(f"start-ups-blackout-simulation {time}")
+    subprocess.Popen(['sudo', 'pipower5', '--power-failure-simulation', f'{time}'])
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/get-ups-power-failure-simulation', methods=['POST', 'GET'])
+@cross_origin()
+def get_ups_blackout_simulation():
+    import json
+    import os
+    import time
+
+    try:
+        timeout = request.json["timeout"]
+    except:
+        timeout = 3
+    
+    st = time.time()
+    file_path = '/opt/pipower5/blackout_simulation'
+    while os.path.exists(file_path + ".lock") and time.time() - st < timeout:
+        print("file is being written ...")
+        time.sleep(1)
+    with open(file_path + '.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return {"status": True, "data":data}
+
+@__app__.route(f'{__api_prefix__}/set-restart-service', methods=['POST'])
+@cross_origin()
+def set_restart_service():
+    __restart_service__()
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-shutdown', methods=['POST'])
+@cross_origin()
+def set_shutdown():
+    __log__.info("Shutdown requested")
+    __shutdown__()
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-reboot', methods=['POST'])
+@cross_origin()
+def set_reboot():
+    __log__.info("Reboot requested")
+    __reboot__()
+    return {"status": True, "data": "OK"}
+
+@__app__.route(f'{__api_prefix__}/set-database-retention-days', methods=['POST'])
+@cross_origin()
+def set_database_retention_days():
+    database_retention_days = request.json["days"]
+    if database_retention_days is None:
+        return {"status": False, "error": "[ERROR] database_retention_days not found"}
+    __on_config_changed__({'system': {'database_retention_days': database_retention_days}})
+    return {"status": True, "data": "OK"}
+
+# Catch-all route for single-page application
+@__app__.route(f'{__api_prefix__}/get-ips')
+@cross_origin()
+def get_ips_endpoint():
+    data = __get_ip_data__()
+    if not data or not data.get('ips'):
+        # Fallback: extract IP keys from cached data (old pm_auto)
+        raw = __read_data__()
+        ip_keys = ['ips', 'network_type'] + [k for k in raw if k.startswith('ip_') or k.startswith('mac_')]
+        data = {k: raw[k] for k in ip_keys if k in raw}
+    return {"status": True, "data": data}
+
+@__app__.route('/<path:path>')
+@cross_origin()
+def catch_all(path):
+    with open(f'{__app__.static_folder}/index.html') as f:
+        return f.read()
 
 class PMDashboard():
-    def __init__(self, device_info=None, database='pm_dashboard', spc_enabled=False, config=None, get_logger=None):
-        global __config__, __device_info__, __db__, __log__, __on_inside_config_changed__, __log_path__
+    def __init__(self, device_info=None, database='pm_dashboard', config=None, log=None, get_logger=None):
+        global __device_info__, __log_path__, __enable_history__
+        global __data_logger__, __db__, __log__, __restart_service__
+        global AVAILABLE_OLED_PAGES
+
         __device_info__ = device_info
         if 'app_name' in __device_info__:
             app_name = __device_info__['app_name']
@@ -461,63 +805,116 @@ class PMDashboard():
             app_name = __device_info__['id']
         __log_path__ = f'/var/log/{app_name}'
 
-        if get_logger is None:
-            get_logger = logging.getLogger
-        self.log = get_logger(__name__)
+        if get_logger:
+            self.log = get_logger(__name__)
+        else:
+            self.log = log or logging.getLogger(__name__)
         __log__ = self.log
 
-        __config__ = config
+        if 'enable_history' not in config['system']:
+            config['system']['enable_history'] = False
+        __enable_history__ = config['system']['enable_history']
+        if 'database_retention_days' not in config['system']:
+            config['system']['database_retention_days'] = 30
+        database_retention_days = config['system']['database_retention_days'] 
 
+        if __enable_history__:
+            __db__ = Database(database, log=log, retention_days=database_retention_days)
         self.data_logger = DataLogger(
-            database=database,
-            spc_enabled=spc_enabled,
-            interval=__config__['system']['data_interval'],
-            get_logger=get_logger)
-        __db__ = Database(database, get_logger=get_logger)
+            database=__db__,
+            interval=config['system']['data_interval'],
+            log=self.log)
+        __data_logger__ = self.data_logger
 
         self.started = False
-        __on_inside_config_changed__ = self.on_config_changed
+
+        AVAILABLE_OLED_PAGES = []
+        for item in __device_info__['peripherals']:
+            if item.startswith("oled_page_"):
+                AVAILABLE_OLED_PAGES.append(item.split("oled_page_")[1])
+        # Multi-page designer pages (home/storage/cpu/...)
+        try:
+            from .oled_page_ids import OLED_PAGE_IDS
+            for pid in OLED_PAGE_IDS:
+                if pid not in AVAILABLE_OLED_PAGES:
+                    AVAILABLE_OLED_PAGES.append(pid)
+        except Exception:
+            pass
 
     @log_error
     def set_debug_level(self, level):
-        __db__.set_debug_level(level)
-        self.data_logger.set_debug_level(level)
         self.log.setLevel(level)
-
+    
     @log_error
-    def update_status(self, status):
-        self.data_logger.update_status(status)
+    def set_test_smtp(self, func):
+        global __test_smtp__
+        __test_smtp__ = func
 
     @log_error
     def start(self):
-        __db__.start()
+        self.log.debug("Initializing Dashboard Server")
+        self.log.info(f"Starting Dashboard Server on {__host__}:{__port__}")
         self.server = make_server(__host__, __port__, __app__)
         self.ctx = __app__.app_context()
         self.ctx.push()
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
+        self.log.info("Dashboard Server Started")
 
     @log_error
-    def on_config_changed(self, config):
-        if 'data_interval' in config['system']:
-            self.data_logger.set_interval(config['system']['data_interval'])
+    def update_config(self, config):
+        patch = {}
+        if 'data_interval' in config:
+            self.data_logger.set_interval(config['data_interval'])
+            patch['data_interval'] = config['data_interval']
+        if 'database_retention_days' in config:
+            __db__.set_retention_days(config['database_retention_days'])
+            patch['database_retention_days'] = config['database_retention_days']
+        return patch
+
+    @log_error
+    def set_read_data(self, func):
+        global __read_data__
+        __read_data__ = func
+        self.data_logger.set_read_data(func)
+
+    @log_error
+    def set_get_ip_data(self, func):
+        global __get_ip_data__
+        __get_ip_data__ = func
+
+    @log_error
+    def set_read_config(self, func):
+        global __read_config__
+        __read_config__ = func
 
     @log_error
     def set_on_config_changed(self, func):
-        global __on_outside_config_changed__
-        __on_outside_config_changed__ = func
+        global __on_config_changed__
+        __on_config_changed__ = func
 
     @log_error
-    def set_pm_auto_runtime(self, func):
-        global __pm_auto_runtime_update__
-        __pm_auto_runtime_update__ = func
+    def set_on_restart_service(self, func):
+        global __restart_service__
+        __restart_service__ = func
+
+    @log_error
+    def set_play_pipower5_buzzer(self, func):
+        global __play_pipower5_buzzer__
+        __play_pipower5_buzzer__ = func
 
     @log_error
     def run(self):
-        self.log.info("Dashboard Server start")
         self.started = True
+        if __enable_history__:
+            self.log.debug("Starting Database")
+            __db__.start()
+            self.log.info("Database Started")
+        self.log.debug("Starting Data Logger")
         self.data_logger.start()
+        self.log.info("Data Logger Started")
         self.server.serve_forever()
+        self.log.info("Dashboard Server started")
 
     @log_error
     def shutdown(self):
@@ -528,7 +925,8 @@ class PMDashboard():
         self.log.debug("Stopping Dashboard Server")
         if self.started:
             self.data_logger.stop()
-            __db__.close()
+            if __db__:
+                __db__.close()
             self.server.shutdown()
             self.server.server_close()
             self.started = False

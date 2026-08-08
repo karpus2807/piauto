@@ -183,9 +183,24 @@ def validate_layout(data):
             'builtin': bool(page.get('builtin', pid_s in (
                 'home', 'storage', 'network', 'cpu', 'gpu', 'fans',
                 'ram', 'temps', 'services', 'heart',
+                'mix', 'performance', 'ips', 'disk',
             ))),
         }
+        if page.get('native') or page.get('stock') or pid_s in (
+            'mix', 'performance', 'ips', 'disk',
+        ):
+            cleaned_pages[pid_s]['native'] = True
+            cleaned_pages[pid_s]['stock'] = True
+            if page.get('source'):
+                cleaned_pages[pid_s]['source'] = str(page.get('source'))[:120]
     clean_carousel = [str(p)[:32] for p in carousel[:20]]
+    static = bool(data.get('static') or data.get('mode') == 'static')
+    static_page = str(data.get('static_page') or '')[:32]
+    if static:
+        if not static_page and clean_carousel:
+            static_page = clean_carousel[0]
+        if static_page:
+            clean_carousel = [static_page]
     if errors:
         return False, '; '.join(errors[:8])
     return True, {
@@ -198,6 +213,9 @@ def validate_layout(data):
         },
         'carousel': clean_carousel,
         'pages': cleaned_pages,
+        'static': static,
+        'static_page': static_page,
+        'mode': 'static' if static else 'carousel',
     }
 
 

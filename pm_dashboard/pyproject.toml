@@ -7,7 +7,7 @@ name = "pm_dashboard"
 authors = [
   { name="SunFounder", email="service@sunfounder.com" },
 ]
-description = "Library for Sunfounder Power Control"
+description = "Pironman dashboard (Max-compatible) with OLED Customize tab — based on SunFounder pm_dashboard 2.x"
 readme = "README.md"
 requires-python = ">=3.7"
 classifiers = [
@@ -27,10 +27,14 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["pm_dashboard"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+pm_dashboard = ["www/**/*"]
 
 [project.urls]
-"Homepage" = "https://github.com/sunfounder/pm_dashboard"
-"Bug Tracker" = "https://github.com/sunfounder/pm_dashboard/issues"
+"Homepage" = "https://github.com/karpus2807/piauto"
+"Bug Tracker" = "https://github.com/karpus2807/piauto/issues"
 
 [project.scripts]
 pm_dashboard = "pm_dashboard:main"

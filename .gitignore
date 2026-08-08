@@ -1,2 +1,10 @@
 .vscode
 */__pycache__/*
+**/__pycache__/
+**/pm_dashboard.egg-info/
+**/pm_auto.egg-info/
+**/build/
+pm_auto_classic_1x/
+pm_dashboard_classic_1x/
+**/CLAUDE.md
+**/.claude/

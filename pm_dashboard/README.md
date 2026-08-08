@@ -1,35 +1,63 @@
-# pm_dashboard (Pironman 5 fork)
+# Pironman Dashboard
 
-Flask dashboard on port **34001** with an advanced **Control Center** at `/control`.
+Pironman Dashboard is a simple server that provides a REST API and host a web page to display the data from the Pironman Dashboard.
 
-## Control Center (v1.3.0+)
+- [Pironman Dashboard](#pironman-dashboard)
+  - [Installation](#installation)
+  - [WWW](#www)
+  - [About SunFounder](#about-sunfounder)
+  - [Contact us](#contact-us)
 
-- **URL:** `http://<pi-ip>:34001/control`
-- One-click **presets** (Quiet, Performance, Server, Night, RGB, OLED off)
-- Tabs: RGB, Fans, OLED, Alerts, System
-- Sliders / toggles / chips — auto-save to `config.json`
-- Live bar: hostname, uptime, CPU, storage free (via `pm_auto` Tier 2)
-
-### API (extensions)
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/v1.0/get-control-schema` | Fields, presets, current config |
-| GET | `/api/v1.0/get-live-status` | History + dashboard snapshot |
-| GET | `/api/v1.0/get-oled-options` | Disk + network lists |
-| POST | `/api/v1.0/apply-preset` | `{"preset": "quiet_desktop"}` |
-| POST | `/api/v1.0/set-system-config` | `{"system": { ...partial }}` |
-
-Requires **pm_auto** with `dashboard_stats` (piauto v1.2.23+).
-
-## Install
-
-With pironman5 `install.py` (uses `./pm_dashboard` from this monorepo), or:
+## Installation
 
 ```bash
-pip install ./pm_dashboard
+# Install development dependencies
+apt-get -y install python3 python3-pip python3-venv git influxdb
+
+# Create a virtual environment
+python3 -m venv venv
+
+# Clone the repository
+git clone https://github.com/sunfounder/pm_dashboard.git
+
+# Activate the virtual environment
+source venv/bin/activate
+
+# Install the package
+pip3 install .
 ```
 
-## Based on
+## WWW
 
-[sunfounder/pm_dashboard](https://github.com/sunfounder/pm_dashboard) @ 1.2.10 + control center.
+This Package include a web page, located in `pm_dashboard/www` is a compiled web page from [Pironman Dashboard WWW](https://github.com/sunfounder/pm_dashboard_www) repository.
+
+To update the web page, download the [latest release](https://github.com/sunfounder/pm_dashboard_www/releases/latest/download/www.zip)
+```bash
+wget https://github.com/sunfounder/pm_dashboard_www/releases/latest/download/www.zip
+```
+Unzip the file
+```bash
+unzip www.zip
+```
+Remove the old `www` folder
+```bash
+rm -r pm_dashboard/www
+```
+Copy the web page to the `pm_dashboard/www` directory
+```bash
+cp -r www pm_dashboard/www
+```
+Clean the files
+```bash
+rm www.zip
+```
+
+## About SunFounder
+SunFounder is a company focused on STEAM education with products like open source robots, development boards, STEAM kit, modules, tools and other smart devices distributed globally. In SunFounder, we strive to help elementary and middle school students as well as hobbyists, through STEAM education, strengthen their hands-on practices and problem-solving abilities. In this way, we hope to disseminate knowledge and provide skill training in a full-of-joy way, thus fostering your interest in programming and making, and exposing you to a fascinating world of science and engineering. To embrace the future of artificial intelligence, it is urgent and meaningful to learn abundant STEAM knowledge.
+
+## Contact us
+website:
+    www.sunfounder.com
+
+E-mail:
+    service@sunfounder.com

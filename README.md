@@ -33,28 +33,48 @@ From [pironman5](https://github.com/sunfounder/pironman5) installer — `install
 sudo python3 install.py
 ```
 
-## One-command OLED Designer install / upgrade
+## One-command OLED Customize install / upgrade
 
-On a Pironman 5 Pi with the standard venv at `/opt/pironman5/venv`, run:
+Creates `/opt/pironman5/venv` if missing, installs apt deps when needed, upgrades packages, and restarts `pironman5.service` when present:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install-oled-designer.sh)
 ```
 
-This upgrades both packages from this repo and restarts `pironman5.service`:
-
-- `pm_dashboard` (Control Center + OLED Designer)
-- `pm_auto` (physical OLED renderer, Test on OLED, icon/animation support)
-
-After it finishes, hard refresh the browser (`Ctrl+Shift+R`) on `/oled-designer`.
-
-If your venv or service name is custom:
+From a local clone (uses this checkout instead of GitHub):
 
 ```bash
-PIRONMAN5_VENV_PIP=/path/to/pip3 \
-PIRONMAN5_VENV_PY=/path/to/python3 \
+bash install-oled-designer.sh
+```
+
+### Pironman 5 Max (recommended path)
+
+Max keeps a **pm_auto 2.x** stack (`pm_auto.libs` intact) plus a multi-page **OLED Designer**:
+
+- Left nav **OLED** tab → full designer (`home` / `storage` / `network` / `cpu` / `gpu` / `fans` / `ram` / `temps` / `services` / `heart`, custom pages, canvas edit, Apply / Test on OLED)
+- Direct: `http://<pi-ip>:34001/oled-designer`
+
+To restore pure SunFounder packages:
+
+```bash
+bash install-oled-designer.sh --restore-stock
+```
+
+### Classic (non-Max) Pironman 5
+
+Installer also installs classic `pm_auto` from this repo (carousel / designer stack). Do **not** force that onto Max unless you know it will break `pm_auto.libs`.
+
+After install, hard refresh the browser (`Ctrl+Shift+R`).
+
+Optional overrides:
+
+```bash
+PIRONMAN5_HOME=/opt/pironman5 \
+PIRONMAN5_VENV=/opt/pironman5/venv \
 PIRONMAN5_SERVICE=pironman5 \
-bash <(curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install-oled-designer.sh)
+PIAUTO_FORCE_GIT=1 \
+PIAUTO_REF=main \
+bash install-oled-designer.sh
 ```
 
 ## Upgrade on device

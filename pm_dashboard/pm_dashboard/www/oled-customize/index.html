@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OLED Customize</title>
+  <link rel="stylesheet" href="/oled-customize/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="header">
+      <div>
+        <h1>OLED Customize</h1>
+        <p class="sub">Enable pages, reorder the carousel, and tune display settings.</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" id="btn-reload" class="btn ghost">Reload</button>
+        <button type="button" id="btn-apply" class="btn primary">Apply</button>
+      </div>
+    </header>
+
+    <section class="card" id="status-card">
+      <div id="status" class="status">Loading…</div>
+    </section>
+
+    <section class="card">
+      <h2>Display</h2>
+      <div class="grid">
+        <label class="field check">
+          <input type="checkbox" id="oled-enable" />
+          <span>OLED enabled</span>
+        </label>
+        <label class="field">
+          <span>Rotation</span>
+          <select id="oled-rotation">
+            <option value="0">0°</option>
+            <option value="180">180°</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Sleep timeout (seconds, 0 = never)</span>
+          <input type="number" id="oled-sleep" min="0" max="600" step="1" />
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Pages</h2>
+      <p class="hint">Drag to reorder. Toggle to include in the carousel. At least one page should stay enabled.</p>
+      <ul id="page-list" class="page-list"></ul>
+    </section>
+
+    <p class="foot" id="foot"></p>
+  </div>
+  <script src="/oled-customize/app.js"></script>
+</body>
+</html>

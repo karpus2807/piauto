@@ -1,8 +1,9 @@
 """Default editable layouts calibrated to legacy OLED draw positions (128×64)."""
 
-from .control_schema import OLED_PAGE_IDS
+from .oled_page_ids import OLED_PAGE_IDS, STOCK_NATIVE_PAGE_IDS, STOCK_NATIVE_SOURCES
 
 FULL_CAROUSEL = list(OLED_PAGE_IDS)
+STOCK_CAROUSEL = list(STOCK_NATIVE_PAGE_IDS)
 
 # Legacy hardware uses 8px font (ssd1306 size='sm') for all data lines.
 _LEGACY_FONT = 1  # designer: 1 = sm/8px, 2 = md/10px
@@ -28,6 +29,27 @@ def _pct(x, y, key):
     return {
         'type': 'metric', 'x': x, 'y': y, 'key': key,
         'format': '{:.0f}%', 'align': 'center', 'size': _LEGACY_FONT,
+    }
+
+
+def _stock_stub(page_id, title, blurb):
+    """Canvas placeholder — hardware still runs PageMix/etc., not this layout."""
+    src = STOCK_NATIVE_SOURCES.get(page_id, '')
+    short = src.rsplit('.', 1)[-1] if src else page_id
+    return {
+        'id': page_id,
+        'name': title,
+        'duration': 5,
+        'builtin': True,
+        'native': True,
+        'stock': True,
+        'source': src,
+        'elements': [
+            _txt(64, 8, title.upper(), align='center', size=2),
+            _txt(64, 28, 'Native stock page', align='center'),
+            _txt(64, 42, blurb, align='center'),
+            _txt(64, 54, short, align='center'),
+        ],
     }
 
 
@@ -175,14 +197,27 @@ BUILTIN_PAGE_TEMPLATES = {
     },
 }
 
+STOCK_NATIVE_TEMPLATES = {
+    'mix': _stock_stub('mix', 'Mix', 'IP + CPU + RAM'),
+    'performance': _stock_stub('performance', 'Perf', 'CPU RAM TEMP FAN'),
+    'ips': _stock_stub('ips', 'IPs', 'Network addresses'),
+    'disk': _stock_stub('disk', 'Disk', 'Storage usage'),
+}
+
 
 def build_default_layout():
     import copy
+    pages = {k: copy.deepcopy(v) for k, v in BUILTIN_PAGE_TEMPLATES.items()}
+    for pid in STOCK_NATIVE_PAGE_IDS:
+        pages[pid] = copy.deepcopy(STOCK_NATIVE_TEMPLATES[pid])
     return {
         'version': 1,
         'display': {'width': 128, 'height': 64, 'aspect': '2:1'},
         'carousel': list(FULL_CAROUSEL),
-        'pages': copy.deepcopy(BUILTIN_PAGE_TEMPLATES),
+        'pages': pages,
+        'static': False,
+        'static_page': '',
+        'mode': 'carousel',
     }
 
 
@@ -193,13 +228,25 @@ def merge_layout_with_templates(saved):
         return base
     if saved.get('carousel'):
         base['carousel'] = list(saved['carousel'])
+    base['static'] = bool(saved.get('static') or saved.get('mode') == 'static')
+    base['static_page'] = str(saved.get('static_page') or '')
+    base['mode'] = 'static' if base['static'] else 'carousel'
+    if base['static'] and base['static_page']:
+        base['carousel'] = [base['static_page']]
     saved_pages = saved.get('pages') or {}
     for pid, page in saved_pages.items():
         if not isinstance(page, dict):
             continue
+        if pid in STOCK_NATIVE_PAGE_IDS:
+            base['pages'][pid] = copy.deepcopy(STOCK_NATIVE_TEMPLATES[pid])
+            if page.get('duration') is not None:
+                base['pages'][pid]['duration'] = page.get('duration')
+            continue
         if page.get('elements'):
             base['pages'][pid] = copy.deepcopy(page)
             base['pages'][pid].setdefault('builtin', pid in BUILTIN_PAGE_TEMPLATES)
+            base['pages'][pid].setdefault('duration', 5)
         elif pid.startswith('custom_'):
             base['pages'][pid] = copy.deepcopy(page)
+            base['pages'][pid].setdefault('duration', 5)
     return base

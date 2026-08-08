@@ -1,12 +1,15 @@
-import time
+import logging
+
+from .libs.utils import log_error
+from .libs.event_bus import EventBus
+from .addons import Addons
+
+from typing import Dict
 import threading
-from sf_rpi_status import shutdown
-
-from .utils import has_common_items, log_error
-
-app_name = 'pm_auto'
+import asyncio
 
 DEFAULT_CONFIG = {
+    'temperature_unit': 'C',
     'rgb_led_count': 4,
     'rgb_enable': True,
     'rgb_color': '#ff00ff',
@@ -17,254 +20,133 @@ DEFAULT_CONFIG = {
     'oled_disk': 'total',  # 'total' or the name of the disk, normally 'mmcblk0' for SD Card, 'nvme0n1' for NVMe SSD
     'oled_network_interface': 'all',  # 'all' or the name of the interface, normally 'wlan0' for WiFi, 'eth0' for Ethernet
     'oled_sleep': False,
-    'oled_sleep_timeout': 0,
-    'oled_home_duration': 15,
-    'oled_page_duration': 5,
-    'oled_pages_profile': 'full',
-    'oled_alert_enable': True,
-    'oled_alert_duration': 3,
-    'oled_alert_cooldown': 45,
-    'oled_alert_cpu_temp': 80,
-    'oled_alert_cpu_percent': 90,
-    'oled_alert_disk_percent': 90,
-    'oled_alert_gpu_temp': 80,
-    'oled_alert_undervoltage': True,
-    'temperature_unit': 'C',
-    'gpio_fan_mode': 1,
-    'gpio_fan_led_pin': 5,
-    "gpio_fan_pin": 6,
-    'vibration_switch_pin': 26,
-    'vibration_switch_pull_up': False,
+    'oled_sleep_timeout': 10,
+    'oled_pages': [
+        'performance',
+        'ips',
+        'disk',
+    ],
+    'rgb_matrix_enable': True,
+    'rgb_matrix_style': 'rainbow',
+    'rgb_matrix_color': '#ff0000',
+    'rgb_matrix_color2': '#0000ff',
+    'rgb_matrix_brightness': 100,  # 0-100
+    'rgb_matrix_speed': 50,
 }
 
-class PMAuto():
-    @log_error
-    def __init__(self, config=DEFAULT_CONFIG, peripherals=[], get_logger=None):
-        if get_logger is None:
-            import logging
-            get_logger = logging.getLogger
-        self.log = get_logger(__name__)
+class PMAuto:
+    def __init__(self, config=DEFAULT_CONFIG, device_info=None, peripherals=None, event_map=None, log=None):
+        self.log = log or logging.getLogger(__name__)
         self._is_ready = False
-        self.peripherals = peripherals
+        self.device_info = device_info
+        # 创建全局事件总线实例
+        self.event = EventBus(log=log)
+        self.peripherals = peripherals or []
+        self.data = {}
+        self.thread = None  # 添加线程属性
+        self.loop = None    # 添加事件循环属性
 
-        self.oled = None
-        self.ws2812 = None
-        self.fan = None
-        self.spc = None
-        self.vibration_switch = None
-        if 'oled' in peripherals:
-            from .oled import OLED
-            self.log.debug("Initializing OLED")
-            self.oled = OLED(config, get_logger=get_logger)
-            if not self.oled.is_ready():
-                self.log.error("Failed to initialize OLED")
-            else:
-                self.log.debug("OLED initialized")
-        if 'ws2812' in peripherals:
-            from .ws2812 import WS2812  
-            self.ws2812 = WS2812(config, get_logger=get_logger)
-            if not self.ws2812.is_ready():
-                self.log.error("Failed to initialize WS2812")
-            else:
-                self.log.debug("WS2812 initialized")
-                self.ws2812.start()
-        # if FANS in peripherals:
-        if self.fan_enabled() or 'spc' in peripherals:
-            from .fan_control import FanControl
-            self.fan = FanControl(config, fans=peripherals, get_logger=get_logger)
-        if 'spc' in peripherals:
-            self.spc = SPCAuto(get_logger=get_logger)
-        if 'vibration_switch' in peripherals:
-            from .vibration_switch import VibrationSwitch
-            self.vibration_switch = VibrationSwitch(config, get_logger=get_logger)
-            self.vibration_switch.set_on_vabration_detected(self.on_vabration_detected)
+        # Add system addon for all device
+        self.peripherals.append('system')
 
-        if self.oled is not None and self.oled.is_ready() and self.fan is not None:
-            self.oled.set_fan_control(self.fan)
+        # Initialize addons
+        self.addons = Addons(
+            peripherals=self.peripherals,
+            device_info=self.device_info,
+            config=config,
+            event=self.event,
+            log=self.log)
 
-        self.interval = 1
-        self._dashboard_publish_interval = 5
-        self._dashboard_last_publish = 0.0
-
-        self.thread = None
-        self.running = False
-
-        self.__on_state_changed__ = None
+        # Initialize event map
+        self.event_map = event_map or {}
+        # Connect events
+        for pub_event_name, sub_event_name in self.event_map.items():
+            self.event.connect(pub_event_name, sub_event_name)
+        
+        self.event.subscribe("before_shutdown", self.handle_before_shutdown)
+        self.event.subscribe("data_changed", self.handle_data_changed)
 
     @log_error
-    def on_vabration_detected(self):
-        self.log.info("Vibration detected")
-        if self.oled is not None and self.oled.is_ready():
-            self.oled.go_home()
-        elif self.oled is not None:
-            self.oled.wake()
+    def test_smtp(self):
+        return self.addons.pipower5.test_smtp()
 
     @log_error
-    def fan_enabled(self):
-        from .fan_control import FANS
-        return has_common_items(FANS, self.peripherals)
+    def play_pipower5_buzzer(self, event):
+        return self.addons.pipower5.play_pipower5_buzzer(event)
 
     @log_error
-    def set_debug_level(self, level):
-        self.log.setLevel(level)
-        if self.oled is not None:
-            self.oled.set_debug_level(level)
-        if self.ws2812 is not None:
-            self.ws2812.set_debug_level(level)
-        if self.fan is not None:
-            self.fan.set_debug_level(level)
+    def power_failure_simulation(self, test_time=60):
+        return self.addons.pipower5.power_failure_simulation(test_time)
 
     @log_error
-    def set_on_state_changed(self, callback):
-        self.__on_state_changed__ = callback
-        self.fan.set_on_state_changed(callback)
+    def handle_data_changed(self, data: Dict, delete_keys: list = []) -> None:
+        # Delete old data
+        for key in delete_keys:
+            if key in self.data:
+                del self.data[key]
+
+        self.data.update(data)
 
     @log_error
-    def is_ready(self):
+    def handle_before_shutdown(self, reason):
+        pass
+
+    @log_error
+    def read(self) -> Dict:
+        return self.data
+
+    @log_error
+    def get_ip_data(self):
+        return self.addons.system.fetch_ip_data()
+
+    @log_error
+    def is_ready(self) -> bool:
         return self._is_ready
 
     @log_error
-    def get_dashboard_status(self):
-        """Tier-2 stats for web dashboard (hostname, uptime, storage free space)."""
-        from .dashboard_stats import get_dashboard_snapshot
-        return get_dashboard_snapshot()
+    def update_config(self, config: Dict) -> Dict:
+        '''
+        Update config.
+
+        Args:
+            config (Dict): Config dict.
+
+        Returns:
+            A dict of config patch to update the config file.
+        '''
+        self.log.info(f"PM Auto new config: {config}")
+        patch = self.addons.update_config(config)
+        if 'temperature_unit' in config:
+            patch['temperature_unit'] = config['temperature_unit']
+        if len(patch) > 0:
+            self.log.info(f"PM Auto Update config patch: {patch}")
+        return patch
 
     @log_error
-    def _publish_dashboard_status(self):
-        if self.__on_state_changed__ is None:
-            return
-        now = time.time()
-        if now - self._dashboard_last_publish < self._dashboard_publish_interval:
-            return
-        self._dashboard_last_publish = now
-        try:
-            status = self.get_dashboard_status()
-            combined = status['storage'].get('combined') or {}
-            flat = {}
-            if status['system'].get('uptime_seconds') is not None:
-                flat['uptime_seconds'] = status['system']['uptime_seconds']
-            if combined.get('percent_free') is not None:
-                flat['storage_percent_free'] = combined['percent_free']
-            if combined.get('percent_used') is not None:
-                flat['storage_percent_used'] = combined['percent_used']
-            if flat:
-                self.__on_state_changed__(flat)
-        except Exception as e:
-            self.log.exception(f'Dashboard status publish failed: {e}')
-
-    @log_error
-    def update_config(self, config):
-        self.log.debug(f"Update config: {config}")
-        if 'oled' in self.peripherals:
-            self.oled.update_config(config)
-        if 'ws2812' in self.peripherals:
-            self.ws2812.update_config(config)
-        if self.fan_enabled():
-            self.fan.update_config(config)
-        if 'vibration_switch' in self.peripherals:
-            self.vibration_switch.update_config(config)
-
-    @log_error
-    def loop(self):
-        while self.running:
-            if self.oled is not None and self.oled.is_ready():
-                self.oled.run()
-            if self.fan is not None:
-                self.fan.run()
-            if self.spc is not None and self.spc.is_ready():
-                self.spc.run()
-            self._publish_dashboard_status()
-            time.sleep(self.interval)
-
-    @log_error
-    def start(self):
-        if self.running:
-            self.log.warning("Already running")
-            return
-        self.running = True
-        self.thread = threading.Thread(target=self.loop)
+    def start(self) -> None:
+        def run_event_loop():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.create_task(self.addons.start())
+            try:
+                self.loop.run_forever()
+            except KeyboardInterrupt:
+                self.log.info("Received shutdown signal")
+            finally:
+                self.loop.run_until_complete(self.addons.stop())
+                self.loop.close()
+            self.log.info("PM Auto started")
+        
+        # 创建并启动线程
+        self.thread = threading.Thread(target=run_event_loop, daemon=True)
         self.thread.start()
-        self.log.info("PM Auto Start")
 
     @log_error
-    def stop(self):
-        if self.running:
-            self.running = False
+    def stop(self) -> None:
+        if self.loop and self.loop.is_running():
+            # 线程安全地停止事件循环
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        if self.thread and self.thread.is_alive():
+            # 等待线程结束
             self.thread.join()
-        if self.oled is not None and self.oled.is_ready():
-            self.oled.close()
-        if self.ws2812 is not None and self.ws2812.is_ready():
-            self.ws2812.stop()
-        if self.fan is not None:
-            self.fan.close()
-        self.log.info("PM Auto stoped")
-
-
-class SPCAuto():
-    @log_error
-    def __init__(self, get_logger=None):
-        if get_logger is None:
-            import logging
-            get_logger = logging.getLogger
-        self.log = get_logger(__name__)
-        self._is_ready = False
-
-        from spc.spc import SPC
-        self.spc = SPC(get_logger=get_logger)
-        if not self.spc.is_ready():
-            self._is_ready = False
-            return
-
-        self._is_ready = True
-        self.shutdown_request = 0
-        self.is_plugged_in = False
-
-    @log_error
-    def is_ready(self):
-        return self._is_ready
-
-    @log_error
-    def handle_shutdown(self):
-        if self.spc is None or not self.spc.is_ready():
-            return
-
-        shutdown_request = self.spc.read_shutdown_request()
-        if shutdown_request != self.shutdown_request:
-            self.shutdown_request = shutdown_request
-            self.log.debug(f"Shutdown request: {shutdown_request}")
-        if shutdown_request in self.spc.SHUTDOWN_REQUESTS:
-            if shutdown_request == self.spc.SHUTDOWN_REQUEST_LOW_POWER:
-                self.log.info('Low power shutdown.')
-            elif shutdown_request == self.spc.SHUTDOWN_REQUEST_BUTTON:
-                self.log.info('Button shutdown.')
-            shutdown()
-
-    @log_error
-    def handle_external_input(self):
-        if self.spc is None or not self.spc.is_ready():
-            return
-
-        if 'external_input' not in self.spc.device.peripherals:
-            return
-
-        if 'battery' not in self.spc.device.peripherals:
-            return
-
-        is_plugged_in = self.spc.read_is_plugged_in()
-        if is_plugged_in != self.is_plugged_in:
-            self.is_plugged_in = is_plugged_in
-            if is_plugged_in == True:
-                self.log.info(f"External input plug in")
-            else:
-                self.log.info(f"External input unplugged")
-        if is_plugged_in == False:
-            shutdown_pct = self.spc.read_shutdown_battery_pct()
-            current_pct= self.spc.read_battery_percentage()
-            if current_pct < shutdown_pct:
-                self.log.info(f"Battery is below {shutdown_pct}, shutdown!", level="INFO")
-                shutdown()
-
-    @log_error
-    def run(self):
-        self.handle_external_input()
-        self.handle_shutdown()
+        self.log.info("PM Auto stopped")
