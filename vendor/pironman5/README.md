@@ -1,0 +1,140 @@
+# Pironman 5
+
+Pironman 5 case
+
+Quick Links:
+
+- [Pironman 5](#pironman-5)
+  - [About Pironman5](#about-pironman5)
+  - [Links](#links)
+  - [Installation](#installation)
+  - [Update](#update)
+  - [Compatible Systems](#compatible-systems)
+    - [Ubuntu 24.04 server eth0 and wifi not work](#ubuntu-2404-server-eth0-and-wifi-not-work)
+    - [Debug](#debug)
+  - [About SunFounder](#about-sunfounder)
+  - [Contact us](#contact-us)
+
+## About Pironman5
+
+## Links
+
+- SunFounder Online Store &emsp; <https://www.sunfounder.com/>
+- Documentation &emsp; <https://docs.sunfounder.com/projects/pironman5/en/latest/>
+
+## Installation
+
+```bash
+curl -sSL "https://raw.githubusercontent.com/sunfounder/pironman5/1.3.x/install.sh" | sudo bash
+```
+
+To install PiPower5 as a plugin alongside Pironman 5, append `--pipower5`:
+
+```bash
+curl -sSL "https://raw.githubusercontent.com/sunfounder/pironman5/1.3.x/install.sh" | sudo bash -s -- --pipower5
+```
+
+> If your system does not support piping directly into `bash`, download the script first and then run it:
+>
+> ```bash
+> curl -sSL "https://raw.githubusercontent.com/sunfounder/pironman5/1.3.x/install.sh" -o install.sh
+> sudo bash install.sh
+> ```
+>
+> With PiPower5 plugin:
+>
+> ```bash
+> curl -sSL "https://raw.githubusercontent.com/sunfounder/pironman5/1.3.x/install.sh" -o install.sh
+> sudo bash install.sh --pipower5
+> ```
+
+> **For Pro Max:** The Pro Max includes a 4.3" touchscreen and can auto-launch the dashboard on boot. We recommend switching the touchscreen mode from the default **Mouse Emulation** to **Multitouch** — this enables phone/tablet-like touch gestures and makes the dashboard much easier to use.
+>
+> 1. **Raspberry Pi Icon** >> **Preferences** >> **Control Centre**
+> 2. Select **Screen** tab
+> 3. Long press / right click on **DSI-2**
+> 4. Select **Touchscreen** >> **Mode** >> **Multitouch**
+
+## Update
+
+<https://github.com/sunfounder/pironman5/blob/main/CHANGELOG.md>
+
+## Compatible Systems
+
+Operate Systems that passed the test on the Raspberry Pi 5:
+
+Operate System | Release Date | Compatible
+:---   | :---: | :---: 
+Raspberry Pi OS Desktop - bookworm (64 bit) | 2024-11-19 | &#x2705;
+Raspberry Pi OS Desktop - bookworm (32 bit) | 2024-11-19 |  &#x2705;
+Raspberry Pi OS Full - bookworm (64 bit) | 2024-11-19 |  &#x2705;
+Raspberry Pi OS Full - bookworm (32 bit) | 2024-11-19 |  &#x2705;
+Raspberry Pi OS lite - bookworm (64 bit) | 2024-11-19 |  &#x2705;
+Raspberry Pi OS lite - bookworm (64 bit) | 2024-11-19 |  &#x2705;
+Ubuntu Desktop 24.04.1 LTS (64 bit) | 2024-08-29 |  &#x2705;
+Ubuntu Server 24.04.1 LTS (64 bit) | 2024-10-10 |  &#x2705;
+Ubuntu Desktop 24.10 (64 bit) | 2024-10-10 |   &#x2705;
+Ubuntu Server 24.10 (64 bit) | 2024-08-29 |   &#x2705;
+Kali Linux | 2024-08-27 | &#x2705;
+Home Assistant OS 14.0 | 2024-12-03 | &#x2705;
+Homebridge bookworm (64 bit) | 2024-05-03 | &#x2705;
+Homebridge bookworm (64 bit) | 2024-05-03 | &#x2705;
+Batocera Linux | 2024-07-31 | &#x2705;
+
+### Ubuntu 24.04 server eth0 and wifi not work
+
+https://www.reddit.com/r/Ubuntu/comments/1d0s8v5/ubuntu_2404_server_on_my_raspberry_pi_5_and_eth0/
+
+
+### Debug
+
+Clone the dependency you want to debug or edit
+
+```bash
+git clone https://github.com/sunfounder/pironman5.git
+git clone https://github.com/sunfounder/pm_dashboard.git
+git clone https://github.com/sunfounder/pm_auto.git
+git clone https://github.com/sunfounder/sf_rpi_status.git
+```
+
+Make adjustments, and manually install the package
+
+```bash
+# install from folder
+sudo /opt/pironman5/venv/bin/pip3 uninstall pironman5 -y && sudo /opt/pironman5/venv/bin/pip3 install ~/pironman5 --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pm_dashboard -y && sudo /opt/pironman5/venv/bin/pip3 install ~/pm_dashboard --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pm_auto -y && sudo /opt/pironman5/venv/bin/pip3 install ~/pm_auto --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall sf_rpi_status -y && sudo /opt/pironman5/venv/bin/pip3 install ~/sf_rpi_status --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pipower5 -y && sudo /opt/pironman5/venv/bin/pip3 install ~/pipower5 --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+
+# install from github repo
+sudo /opt/pironman5/venv/bin/pip3 uninstall sf_rpi_status -y && sudo /opt/pironman5/venv/bin/pip3 install git+https://github.com/sunfounder/sf_rpi_status.git --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pipower5 -y && sudo /opt/pironman5/venv/bin/pip3 install git+https://github.com/sunfounder/pipower5.git --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pm_auto -y && sudo /opt/pironman5/venv/bin/pip3 install git+https://github.com/sunfounder/pm_auto.git@1.4.x --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+sudo /opt/pironman5/venv/bin/pip3 uninstall pm_dashboard -y && sudo /opt/pironman5/venv/bin/pip3 install git+https://github.com/sunfounder/pm_dashboard.git@1.3.x --no-build-isolation && sudo chown -R pironman5:pironman5 /opt/pironman5
+```
+
+
+Start/stop the service for debug
+
+```bash
+sudo systemctl stop pironman5.service
+sudo systemctl start pironman5.service
+sudo systemctl restart pironman5.service
+sudo -u pironman5 /opt/pironman5/venv/bin/python3
+
+journalctl -xefu pironman5.service
+sudo systemctl restart pironman5.service && journalctl -xefu pironman5.service
+```
+
+## About SunFounder
+
+SunFounder is a company focused on STEAM education with products like open source robots, development boards, STEAM kit, modules, tools and other smart devices distributed globally. In SunFounder, we strive to help elementary and middle school students as well as hobbyists, through STEAM education, strengthen their hands-on practices and problem-solving abilities. In this way, we hope to disseminate knowledge and provide skill training in a full-of-joy way, thus fostering your interest in programming and making, and exposing you to a fascinating world of science and engineering. To embrace the future of artificial intelligence, it is urgent and meaningful to learn abundant STEAM knowledge.
+
+## Contact us
+
+website:
+    www.sunfounder.com
+
+E-mail:
+    service@sunfounder.com

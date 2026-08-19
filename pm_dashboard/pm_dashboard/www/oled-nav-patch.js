@@ -1,15 +1,37 @@
 /**
- * Inject a 4th "OLED" item into the stock MUI drawer and show /oled-customize
- * inside the main content area (iframe), without rebuilding the React SPA.
+ * Inject extra left-nav items (OLED, Upgrade) into the stock MUI drawer
+ * and show their pages in the main content area (iframe).
  */
 (function () {
   const TAB_KEY = 'pm-dashboard-tabIndex';
-  const OLED_TEXT = 'OLED';
   const API = '/api/v1.0';
-  let injected = false;
-  let iframe = null;
-  let oledButton = null;
-  let originalMainChildren = null;
+
+  const EXTRA_TABS = [
+    {
+      id: 'oled',
+      text: 'OLED',
+      src: '/oled-designer/',
+      title: 'OLED Designer',
+      needOled: true,
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3v2h10v-2h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/></svg>',
+    },
+    {
+      id: 'upgrade',
+      text: 'Upgrade',
+      src: '/upgrade/',
+      title: 'Upgrade',
+      needOled: false,
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2zm7-2l5-5h-3V6h-4v7H7l5 5z"/></svg>',
+    },
+  ];
+
+  const state = {
+    oledOk: null,
+    buttons: {},
+    iframes: {},
+    originalMainChildren: null,
+    restored: false,
+  };
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -20,7 +42,6 @@
   }
 
   function findNavList() {
-    // MUI List inside permanent drawer that contains Dashboard item text.
     const texts = qsa('nav .MuiListItemText-primary, .MuiDrawer-root .MuiListItemText-primary, .MuiListItemText-primary');
     const dash = texts.find((el) => (el.textContent || '').trim() === 'Dashboard');
     if (!dash) return null;
@@ -41,61 +62,75 @@
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
   }
 
+  function extraButtons() {
+    return Object.values(state.buttons);
+  }
+
+  function isExtraButton(btn) {
+    return extraButtons().includes(btn);
+  }
+
   function clearReactSelection(list) {
     listButtons(list).forEach((btn) => {
-      if (btn === oledButton) return;
+      if (isExtraButton(btn)) return;
       setSelected(btn, false);
     });
   }
 
-  function hideOledPanel() {
+  function hideExtraPanels() {
     const main = findMain();
-    if (!main || !iframe) return;
-    iframe.style.display = 'none';
+    if (!main) return;
+    Object.values(state.iframes).forEach((frame) => {
+      frame.style.display = 'none';
+    });
     qsa(':scope > *', main).forEach((child) => {
-      if (child === iframe) return;
-      if (originalMainChildren && originalMainChildren.has(child)) {
-        child.style.display = originalMainChildren.get(child);
+      if (child.dataset && child.dataset.piautoFrame) return;
+      if (state.originalMainChildren && state.originalMainChildren.has(child)) {
+        child.style.display = state.originalMainChildren.get(child);
       } else {
         child.style.removeProperty('display');
       }
     });
   }
 
-  function showOledPanel() {
+  function showTab(tab) {
     const main = findMain();
     if (!main) return;
-    if (!iframe) {
-      iframe = document.createElement('iframe');
-      iframe.id = 'piauto-oled-customize-frame';
-      iframe.src = '/oled-designer/';
-      iframe.title = 'OLED Designer';
+    if (!state.iframes[tab.id]) {
+      const iframe = document.createElement('iframe');
+      iframe.id = 'piauto-frame-' + tab.id;
+      iframe.dataset.piautoFrame = tab.id;
+      iframe.src = tab.src;
+      iframe.title = tab.title;
       iframe.style.cssText = 'border:0;width:100%;height:calc(100vh - 56px);min-height:640px;background:#0b0f14;display:block;';
       main.appendChild(iframe);
+      state.iframes[tab.id] = iframe;
     }
-    if (!originalMainChildren) originalMainChildren = new WeakMap();
+    if (!state.originalMainChildren) state.originalMainChildren = new WeakMap();
     qsa(':scope > *', main).forEach((child) => {
-      if (child === iframe) return;
-      if (!originalMainChildren.has(child)) {
-        originalMainChildren.set(child, child.style.display || '');
+      if (child.dataset && child.dataset.piautoFrame) return;
+      if (!state.originalMainChildren.has(child)) {
+        state.originalMainChildren.set(child, child.style.display || '');
       }
       child.style.display = 'none';
     });
-    iframe.style.display = 'block';
+    Object.entries(state.iframes).forEach(([id, frame]) => {
+      frame.style.display = id === tab.id ? 'block' : 'none';
+    });
     try {
-      window.localStorage.setItem(TAB_KEY, JSON.stringify({ text: OLED_TEXT, index: 99 }));
+      window.localStorage.setItem(TAB_KEY, JSON.stringify({ text: tab.text, index: 99, id: tab.id }));
     } catch (_) { /* ignore */ }
   }
 
   function onStockTabClick() {
-    hideOledPanel();
-    if (oledButton) setSelected(oledButton, false);
+    hideExtraPanels();
+    extraButtons().forEach((btn) => setSelected(btn, false));
   }
 
-  function ensureOledItem(list) {
-    if (injected && oledButton && list.contains(oledButton.closest('.MuiListItem-root'))) {
-      return;
-    }
+  function ensureItem(list, tab) {
+    const existing = qs(`[data-piauto-tab="${tab.id}"]`, list);
+    if (existing && state.buttons[tab.id]) return;
+
     const templateBtn = listButtons(list).find((b) => {
       const t = (b.textContent || '').trim();
       return t.startsWith('Dashboard') || t.startsWith('History') || t.startsWith('Log');
@@ -104,62 +139,70 @@
 
     const templateItem = templateBtn.closest('.MuiListItem-root') || templateBtn.parentElement;
     const item = templateItem.cloneNode(true);
+    item.setAttribute('data-piauto-tab', tab.id);
     const btn = qs('.MuiListItemButton-root', item) || item.querySelector('div[role="button"]') || item.firstElementChild;
     const textEl = qs('.MuiListItemText-primary', item);
-    if (textEl) textEl.textContent = OLED_TEXT;
-
-    // Simple monitor glyph in the icon slot if present.
+    if (textEl) textEl.textContent = tab.text;
     const iconSlot = qs('.MuiListItemIcon-root', item);
-    if (iconSlot) {
-      iconSlot.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3v2h10v-2h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/></svg>';
-    }
-
+    if (iconSlot) iconSlot.innerHTML = tab.icon;
     setSelected(btn, false);
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       clearReactSelection(list);
+      extraButtons().forEach((b) => setSelected(b, false));
       setSelected(btn, true);
-      showOledPanel();
+      showTab(tab);
     });
+    list.appendChild(item);
+    state.buttons[tab.id] = btn;
 
-    // When user returns to stock tabs, hide our panel.
     listButtons(list).forEach((b) => {
-      if (b === btn) return;
+      if (isExtraButton(b)) return;
       b.addEventListener('click', onStockTabClick, true);
     });
+  }
 
-    list.appendChild(item);
-    oledButton = btn;
-    injected = true;
-
-    // Restore OLED tab if it was last selected.
+  function restoreSelection(list) {
+    if (state.restored) return;
+    state.restored = true;
     try {
       const saved = JSON.parse(window.localStorage.getItem(TAB_KEY) || 'null');
-      if (saved && saved.text === OLED_TEXT) {
-        clearReactSelection(list);
-        setSelected(btn, true);
-        showOledPanel();
+      if (!saved) return;
+      const tab = EXTRA_TABS.find((t) => t.text === saved.text || t.id === saved.id);
+      if (!tab || !state.buttons[tab.id]) {
+        state.restored = false;
+        return;
       }
+      clearReactSelection(list);
+      extraButtons().forEach((b) => setSelected(b, false));
+      setSelected(state.buttons[tab.id], true);
+      showTab(tab);
     } catch (_) { /* ignore */ }
   }
 
   async function hasOledPeripheral() {
+    if (state.oledOk !== null) return state.oledOk;
     try {
       const res = await fetch(`${API}/get-device-info`);
       const data = await res.json();
       const peripherals = (data && data.data && data.data.peripherals) || [];
-      return peripherals.includes('oled');
+      state.oledOk = peripherals.includes('oled');
     } catch (_) {
-      return true; // still try to inject; page will error if unsupported
+      state.oledOk = true;
     }
+    return state.oledOk;
   }
 
   async function tryInject() {
-    if (!(await hasOledPeripheral())) return;
     const list = findNavList();
     if (!list) return;
-    ensureOledItem(list);
+    const oledOk = await hasOledPeripheral();
+    EXTRA_TABS.forEach((tab) => {
+      if (tab.needOled && !oledOk) return;
+      ensureItem(list, tab);
+    });
+    restoreSelection(list);
   }
 
   const obs = new MutationObserver(() => {
@@ -172,11 +215,10 @@
   } else {
     tryInject();
   }
-  // SPA paints after first paint; retry a few times.
   let n = 0;
   const timer = setInterval(() => {
     tryInject();
     n += 1;
-    if (n > 40 || injected) clearInterval(timer);
+    if (n > 40) clearInterval(timer);
   }, 250);
 })();

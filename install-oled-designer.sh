@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Bootstrap / upgrade PiAuto OLED Designer packages into the Pironman 5 venv.
-# Creates /opt/pironman5/venv automatically when missing, then installs pm_auto + pm_dashboard.
-#
-# IMPORTANT: This piauto tree targets the classic pm_auto 1.x / pm_dashboard 1.x API.
-# Pironman 5 Max (pironman5 1.3.x + stock pm_auto 2.x / pm_dashboard 2.x) is NOT compatible.
-# Installing over Max breaks the service — this script refuses by default on Max stacks.
+# Overlay upgrade: install this repo's pm_auto + pm_dashboard into an existing
+# /opt/pironman5/venv. For a full Max stack from this repo only (no SunFounder
+# clone), use: sudo bash install.sh
 set -euo pipefail
 
 REPO_URL="${PIAUTO_REPO_URL:-https://github.com/karpus2807/piauto.git}"
@@ -349,7 +346,7 @@ main() {
   install_packages
   restart_service
   show_versions
-  echo "Done. Open http://<pi-ip>:34001 — left nav should include OLED. Hard refresh (Ctrl+Shift+R)."
+  echo "Done. Open http://<pi-ip>:34001 — left nav includes OLED and Upgrade. Hard refresh (Ctrl+Shift+R)."
 }
 
 main "$@"

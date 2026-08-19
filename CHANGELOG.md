@@ -4,6 +4,25 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.9] - 2026-08-19
+
+### Added
+- Dashboard **Upgrade** left-nav section: last 3 GitHub Releases, switch to any of them
+- `GET /api/v1.0/get-upgrades`, `POST /api/v1.0/apply-upgrade`, upgrade status polling
+
+### Changed
+- PWM tower fan uses a tighter CPU temp curve and `pwm1` duty cycle (not kernel 0–4 only):
+  off below 34°C, 25% at 34–38, 50% at 38–41, 75% at 41–43, 100% above 43°C
+- One-time max-RPM calibration at first start, saved in `/opt/pironman5/fan_calibration.json`
+
+## [Unreleased] - vendored Pironman 5 Max stack
+
+### Added
+- `vendor/pironman5/` — SunFounder pironman5 **1.3.18** (`1.3.x`) copied into this repo
+- `vendor/sf_rpi_status/` — Raspberry Pi status helper, no extra git clone
+- `install.sh` — one command full Max setup (`sudo bash install.sh`) without cloning sunfounder/pironman5
+- `vendor/python/requirements-max.txt` — pip libraries used by Max (Flask, Pillow, …)
+
 ## [OLED Designer Phase 2] - 2026-05-19
 
 ### Added

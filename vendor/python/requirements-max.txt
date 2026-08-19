@@ -1,0 +1,26 @@
+# Python deps for Pironman 5 Max + PiAuto OLED designer.
+# Installed into /opt/pironman5/venv by install.sh.
+# Prefer vendor/python/wheels when present.
+
+pip>=24.0
+setuptools>=61.0
+wheel
+build
+requests
+psutil
+argcomplete
+flask
+flask_cors
+influxdb
+pyudev
+configupdater
+Pillow
+smbus2
+evdev
+rpi.lgpio
+adafruit-circuitpython-neopixel-spi
+adafruit-platformdetect
+Adafruit-Blinka==8.59.0
+adafruit-circuitpython-typing
+Adafruit-PureIO>=1.1.7
+pyftdi>=0.40.0

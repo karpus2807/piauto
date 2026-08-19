@@ -174,6 +174,12 @@ def _register_oled_designer():
 
 _register_oled_designer()
 
+def _register_upgrader():
+    from .upgrade_routes import register_upgrade_routes
+    register_upgrade_routes(__app__, __api_prefix__, __www_path__)
+
+_register_upgrader()
+
 # host API
 @__app__.route(f'{__api_prefix__}/get-version')
 @cross_origin()

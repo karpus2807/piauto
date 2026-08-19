@@ -1,0 +1,87 @@
+
+def merge_dict(dict1, dict2):
+    new_dict = dict1.copy()
+    for key in dict2:
+        if isinstance(dict2[key], dict):
+            if key not in dict1:
+                dict1[key] = {}
+            new_dict[key] = merge_dict(dict1[key], dict2[key])
+        elif isinstance(dict2[key], list):
+            if key not in dict1:
+                new_dict[key] = []
+            new_dict[key] = list(dict2[key])
+        else:
+            new_dict[key] = dict2[key]
+    return new_dict
+
+def build_effective_config(raw_config=None):
+    '''
+    Build effective config by merging file overrides onto system defaults.
+
+    Replicates the config assembly logic shared by app startup and CLI.
+    Does NOT write to disk (caller decides whether to persist).
+
+    Args:
+        raw_config: parsed config dict from file (may be None, may have
+                    legacy 'auto' key). Not mutated.
+
+    Returns:
+        dict: effective config {'system': {...}} with defaults + overrides.
+    '''
+    from .variants import SYSTEM_DEFAULT_CONFIG
+    from ._constants import DEFAULT_DEBUG_LEVEL
+
+    config = {
+        'system': SYSTEM_DEFAULT_CONFIG.copy(),
+    }
+    config['system']['debug_level'] = DEFAULT_DEBUG_LEVEL
+
+    if raw_config is not None:
+        # upgrade_config: migrate legacy 'auto' key to 'system'
+        cfg = raw_config
+        if 'auto' in cfg:
+            cfg = {'system': cfg['auto']}
+        config = merge_dict(config, cfg)
+
+    return config
+
+def log_error(func):
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            self.log.exception(str(e))
+    return wrapper
+
+def has_common_items(list1, list2):
+    return bool(set(list1) & set(list2))
+
+def is_included(li, target):
+    '''
+    Check if the target or one of the targets is included in the list.
+    '''
+    if isinstance(target, str):
+        return target in li
+    if isinstance(target, list):
+        return has_common_items(li, target)
+    return False
+
+def hex_to_rgb(hex):
+    '''
+    Convert hex color to rgb color.
+
+    Args:
+        hex (str): hex color string.
+
+    Returns:
+        tuple: rgb color tuple.
+    '''
+    if hex.startswith('#'):
+        hex = hex[1:]
+    return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
+
+def constrain(value, min_value, max_value):
+    '''
+    Constrain value to be within min and max.
+    '''
+    return max(min_value, min(value, max_value))

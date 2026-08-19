@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sf_rpi_status"
+authors = [
+  { name="SunFounder", email="service@sunfounder.com" },
+]
+description = "Library for monitoring Raspberry Pi system status"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+  "Operating System :: OS Independent",
+]
+dynamic = ["version"]
+
+dependencies = [
+  'requests',
+  'psutil',
+  'pyudev',
+]
+
+[tool.setuptools]
+packages = ["sf_rpi_status"]
+
+[project.urls]
+"Homepage" = "https://github.com/sunfounder/sf_rpi_status"
+"Bug Tracker" = "https://github.com/sunfounder/sf_rpi_status/issues"
+
+[project.scripts]
+sf_rpi_status = "sf_rpi_status:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "sf_rpi_status.version.__version__"}

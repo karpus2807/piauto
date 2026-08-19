@@ -17,31 +17,30 @@ Installs as Python package **`pm_auto`** (same import name as SunFounder upstrea
 
 Sleep timeout disabled in firmware loop — carousel runs continuously.
 
-## Install (standalone)
+## One-command install (Pironman 5 Max upgrade)
+
+**SunFounder `pironman5` is vendored** in `vendor/pironman5/` (v1.3.18). You do **not** run their installer or clone their repo.
 
 ```bash
-sudo apt-get install -y python3-pip python3-dev liblgpio-dev \
-  libfreetype6-dev libjpeg-dev libopenjp2-7 i2c-tools
-pip3 install git+https://github.com/karpus2807/piauto.git@main
+git clone https://github.com/karpus2807/piauto.git
+cd piauto
+sudo bash install.sh
 ```
 
-## Install (with Pironman 5)
+This installs:
 
-From [pironman5](https://github.com/sunfounder/pironman5) installer — `install.py` pulls this repo automatically:
+- vendored `pironman5` + `sf_rpi_status`
+- this repo’s `pm_auto` + `pm_dashboard` (OLED designer)
+- systemd `pironman5.service`
+- apt libs (JPEG/Freetype/i2c) and Python packages (Flask, Pillow, …)
+
+Python wheels can be pre-downloaded into `vendor/python/wheels/` then:
 
 ```bash
-sudo python3 install.py
+sudo bash install.sh --offline
 ```
 
-## One-command OLED Customize install / upgrade
-
-Creates `/opt/pironman5/venv` if missing, installs apt deps when needed, upgrades packages, and restarts `pironman5.service` when present:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install-oled-designer.sh)
-```
-
-From a local clone (uses this checkout instead of GitHub):
+See `vendor/THIRD_PARTY.md`. Overlay-only upgrade on an existing Max install:
 
 ```bash
 bash install-oled-designer.sh
@@ -177,6 +176,14 @@ Advanced **Control Center**: `http://<pi-ip>:34001/control`
 - Full `config.json` `system` keys via UI (RGB, fans, OLED, alerts)
 - Presets: Quiet Desktop, Performance, Server, Night, etc.
 - Uses `dashboard_stats` for hostname / uptime / free storage on live bar
+
+## Upgrade (dashboard)
+
+Left nav **Upgrade** lists the last **3 GitHub Releases** of [karpus2807/piauto](https://github.com/karpus2807/piauto). Switch to any of those tags; `pm_auto` + `pm_dashboard` are installed from that release and `pironman5` restarts.
+
+Direct URL: `http://<pi-ip>:34001/upgrade/`
+
+Publish a GitHub **Release** (not only a git tag) so the panel shows notes. Until the first Release exists, the last 3 tags are shown.
 
 ## OLED Designer
 

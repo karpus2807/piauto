@@ -1,8 +1,9 @@
 from pm_auto.libs.addon import Addon
-from pm_auto.libs.utils import run_command, log_error, softlink_gpiochip0_to_gpiochip4
+from pm_auto.libs.utils import log_error
 
-import subprocess
 import os
+import json
+import time
 import asyncio
 
 FANS = [
@@ -17,34 +18,37 @@ FANS = [
 
 # 5 levels of fan speed, from high to low
 GPIO_FAN_MODES = ['Always On', 'Performance', 'Cool', 'Balanced', 'Quiet']
+# PWM duty is percent of calibrated max (pwm1 0-255). ~0.3°C down-hysteresis
+# so the tight 34/38/41/43 bands do not chatter.
 FAN_LEVELS = [
     {
         "name": "OFF",
         "low": -200,
-        "high": 50,
+        "high": 34,
         "percent": 0,
     }, {
         "name": "LOW",
-        "low": 45,
-        "high": 60,
-        "percent": 30,
+        "low": 33.7,
+        "high": 38,
+        "percent": 25,
     }, {
         "name": "MEDIUM",
-        "low": 55,
-        "high": 67.5,
+        "low": 37.7,
+        "high": 41,
         "percent": 50,
     }, {
         "name": "HIGH",
-        "low": 62.5,
-        "high": 75,
-        "percent": 70,
+        "low": 40.7,
+        "high": 43,
+        "percent": 75,
     }, {
         "name": "FULL",
-        "low": 70,
-        "high": 100,
+        "low": 42.7,
+        "high": 200,
         "percent": 100,
     },
 ]
+PWM_FAN_CALIBRATION_FILE = '/opt/pironman5/fan_calibration.json'
 
 INTERVAL = 1
 
@@ -94,6 +98,8 @@ class FanAddon(Addon):
 
         self.level = 0
         self.initial = True
+        self._calib_done = False
+        self.gpio_fan_mode = self.config.get('gpio_fan_mode', 1)
         self._is_ready = True
 
     @log_error
@@ -168,59 +174,50 @@ class FanAddon(Addon):
     @log_error
     def run(self):
         data = {}
-        if self.pwm_fan.is_ready() and self.pwm_fan.is_supported():
-            if self.initial:
-                self.log.info("PWM Fan is supported, sync all other fan with pwm fan")
-                self.initial = False
-            # Sync all other fan with pwm fan
-            pwm_fan_speed = self.pwm_fan.get_speed()
-            data["pwm_fan_speed"] = pwm_fan_speed
-            pwm_fan_level = self.pwm_fan.get_state()
-            if self.spc_fan.is_ready():
-                spc_fan_power = FAN_LEVELS[pwm_fan_level]['percent']
-                self.spc_fan.set_power(spc_fan_power)
-                data["spc_fan_power"] = spc_fan_power
-            if self.gpio_fan.is_ready():
-                gpio_fan_state = pwm_fan_level >= self.gpio_fan_mode
-                data["gpio_fan_state"] = gpio_fan_state
-                self.gpio_fan.set(gpio_fan_state)
-        else:
-            temperature = self.get_cpu_temperature()
-            self.log.debug(f"cpu temperature: {temperature} \'C")
-            changed = False
-            direction = ""
-            if temperature < FAN_LEVELS[self.level]["low"]:
-                self.level -= 1
-                changed = True
-                direction = "low"
-            elif temperature > FAN_LEVELS[self.level]["high"]:
-                self.level += 1
-                changed = True
-                direction = "high"
-            
-            self.level = max(0, min(self.level, len(FAN_LEVELS) - 1))
-            power = FAN_LEVELS[self.level]['percent']
+        if self.pwm_fan.is_ready() and not self._calib_done:
+            self._calib_done = True
+            calib = self.pwm_fan.calibrate_max_speed()
+            if calib:
+                data['pwm_fan_max_speed'] = calib.get('max_rpm', 0)
 
-            if self.gpio_fan.is_ready():
-                gpio_fan_state = self.level >= self.gpio_fan_mode
-                data['gpio_fan_state'] = gpio_fan_state
-                self.gpio_fan.set(gpio_fan_state)
-            if self.spc_fan.is_ready():
-                self.spc_fan.set_power(power)
-                data['spc_fan_power'] = power
-            if self.pwm_fan.is_ready():
-                self.pwm_fan.set_state(self.level)
-                data['pwm_fan_speed'] = self.pwm_fan.get_speed()
+        temperature = self.get_cpu_temperature()
+        self.log.debug(f"cpu temperature: {temperature} \'C")
+        changed = False
+        direction = ""
+        if temperature < FAN_LEVELS[self.level]["low"]:
+            self.level -= 1
+            changed = True
+            direction = "low"
+        elif temperature >= FAN_LEVELS[self.level]["high"]:
+            self.level += 1
+            changed = True
+            direction = "high"
 
-            if changed:
-                self.log.info(f"set fan level: {FAN_LEVELS[self.level]['name']}")
-                self.log.info(f"set fan power: {power}")
-                self.log.info(
-                    f"cpu temperature: {temperature} \'C, {direction}er than {FAN_LEVELS[self.level][direction]}")
-            elif self.initial:
-                self.log.info(f"cpu temperature: {temperature} \'C")
-                self.initial = False
-        
+        self.level = max(0, min(self.level, len(FAN_LEVELS) - 1))
+        power = FAN_LEVELS[self.level]['percent']
+
+        if self.gpio_fan.is_ready():
+            gpio_fan_state = self.level >= self.gpio_fan_mode
+            data['gpio_fan_state'] = gpio_fan_state
+            self.gpio_fan.set(gpio_fan_state)
+        if self.spc_fan.is_ready():
+            self.spc_fan.set_power(power)
+            data['spc_fan_power'] = power
+        if self.pwm_fan.is_ready():
+            self.pwm_fan.set_percent(power)
+            data['pwm_fan_speed'] = self.pwm_fan.get_speed()
+            if getattr(self.pwm_fan, 'max_rpm', 0):
+                data['pwm_fan_max_speed'] = self.pwm_fan.max_rpm
+
+        if changed:
+            self.log.info(f"set fan level: {FAN_LEVELS[self.level]['name']}")
+            self.log.info(f"set fan power: {power}")
+            self.log.info(
+                f"cpu temperature: {temperature} \'C, {direction}er than {FAN_LEVELS[self.level][direction]}")
+        elif self.initial:
+            self.log.info(f"cpu temperature: {temperature} \'C")
+            self.initial = False
+
         self.event.publish('data_changed', data)
         
     @log_error
@@ -235,6 +232,8 @@ class FanAddon(Addon):
             self.gpio_fan.off()
         if self.spc_fan.is_ready():
             self.spc_fan.off()
+        if self.pwm_fan.is_ready():
+            self.pwm_fan.off()
 
     @log_error
     def close(self):
@@ -410,30 +409,24 @@ class SPCFan(Fan):
         self.log.debug("SPC Fan closed")
 
 class PWMFan(Fan):
-    # Systems that need to replace system pwm fan control
-    # Please use all lowercase
+    # Always drive pwm1 ourselves (custom temp curve). Kernel thermal
+    # governor is not used as the speed source.
     TEMP_CONTROL_INTERVENE_OS = [
         'ubuntu',
     ]
+    HWMON_DIR = '/sys/devices/platform/cooling_fan/hwmon'
+    COOLING_STATE = '/sys/class/thermal/cooling_device0/cur_state'
+    COOLING_MAX = '/sys/class/thermal/cooling_device0/max_state'
 
     @log_error
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.max_rpm = 0
         if not PWMFan.pwm_fan_supported():
             self.log.warning("PWM Fan is not supported")
             self._is_ready = False
             return
-
-        # Check if system support pwm fan control
-        _, os_id = run_command("lsb_release -a |grep ID | awk -F ':' '{print $2}'")
-        os_id = os_id.strip()
-        _, os_code_name = run_command("lsb_release -a |grep Codename | awk -F ':' '{print $2}'")
-        os_code_name = os_code_name.strip()
-
-        self.enable_control = False
-        if os_id.lower() in self.TEMP_CONTROL_INTERVENE_OS or os_code_name.lower() in self.TEMP_CONTROL_INTERVENE_OS:
-            self.log.warning("System do not support pwm fan control")
-            self.enable_control = True
+        self.enable_control = True
         self._is_ready = True
 
     @staticmethod
@@ -441,64 +434,154 @@ class PWMFan(Fan):
         from os import path
         return path.exists('/sys/class/thermal/cooling_device0/cur_state') and path.exists('/sys/devices/platform/cooling_fan')
 
+    def _hwmon_file(self, name):
+        if not os.path.isdir(self.HWMON_DIR):
+            return None
+        for entry in os.listdir(self.HWMON_DIR):
+            path = os.path.join(self.HWMON_DIR, entry, name)
+            if os.path.exists(path):
+                return path
+        return None
+
+    def _write_sysfs(self, path, value):
+        with open(path, 'w') as f:
+            f.write(str(int(value)))
+
     @log_error
     @check_ready
     def is_supported(self):
-        return not self.enable_control
+        # False: FanAddon applies the software temperature curve.
+        return False
 
     @log_error
     @check_ready
     def get_state(self):
-        path = '/sys/class/thermal/cooling_device0/cur_state'
         try:
-            with open(path, 'r') as f:
-                cur_state = int(f.read())
-            return cur_state
+            with open(self.COOLING_STATE, 'r') as f:
+                return int(f.read())
         except Exception as e:
             self.log.error(f'read pwm fan state error: {e}')
             return 0
 
     @log_error
     @check_ready
+    def get_max_state(self):
+        try:
+            with open(self.COOLING_MAX, 'r') as f:
+                return int(f.read())
+        except Exception:
+            return 4
+
+    @log_error
+    @check_ready
     def set_state(self, level: int):
-        '''
-        level: 0 ~ 3
-        '''
-        if (isinstance(level, int)):
-            if level > 3:
-                level = 3
-            elif level < 0:
-                level = 0
+        if not isinstance(level, int):
+            return
+        max_state = self.get_max_state()
+        if max_state is None:
+            max_state = 4
+        level = max(0, min(level, max_state))
+        try:
+            self._write_sysfs(self.COOLING_STATE, level)
+        except Exception as e:
+            self.log.error(f'write pwm fan state error: {e}')
 
-            cmd = f"echo '{level}' | tee -a /sys/class/thermal/cooling_device0/cur_state"
-            result = subprocess.check_output(cmd, shell=True)
-
-            return result
+    @log_error
+    @check_ready
+    def set_percent(self, percent):
+        '''Set duty cycle as percent of max PWM (0-100).'''
+        percent = max(0, min(100, int(percent)))
+        enable_path = self._hwmon_file('pwm1_enable')
+        pwm_path = self._hwmon_file('pwm1')
+        if enable_path:
+            try:
+                self._write_sysfs(enable_path, 1)
+            except Exception as e:
+                self.log.debug(f'pwm1_enable write skipped: {e}')
+        if pwm_path:
+            duty = int(round(percent * 255 / 100.0))
+            try:
+                self._write_sysfs(pwm_path, duty)
+                return duty
+            except Exception as e:
+                self.log.error(f'write pwm1 error: {e}')
+        max_state = self.get_max_state() or 4
+        self.set_state(int(round(percent * max_state / 100.0)))
+        return percent
 
     @log_error
     @check_ready
     def get_speed(self):
-        '''
-        path =  '/sys/devices/platform/cooling_fan/hwmon/*/fan1_input'
-        '''
-        dir = '/sys/devices/platform/cooling_fan/hwmon/'
-        secondary_dir = os.listdir(dir)
-        path = f'{dir}/{secondary_dir[0]}/fan1_input'
-
-        os.listdir
+        path = self._hwmon_file('fan1_input')
+        if not path:
+            return 0
         try:
             with open(path, 'r') as f:
-                speed = int(f.read())
-            return speed
+                return int(f.read())
         except Exception as e:
             self.log.error(f'read fan1 speed error: {e}')
             return 0
 
+    def load_calibration(self):
+        path = PWM_FAN_CALIBRATION_FILE
+        if not os.path.isfile(path):
+            return None
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and int(data.get('max_rpm', 0)) > 0:
+                return data
+        except Exception as e:
+            self.log.warning(f'load fan calibration failed: {e}')
+        return None
+
+    def save_calibration(self, data):
+        path = PWM_FAN_CALIBRATION_FILE
+        try:
+            directory = os.path.dirname(path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(data, f)
+            os.chmod(path, 0o644)
+        except Exception as e:
+            self.log.warning(f'save fan calibration failed: {e}')
+
+    @log_error
+    @check_ready
+    def calibrate_max_speed(self, settle_seconds=8):
+        existing = self.load_calibration()
+        if existing:
+            self.max_rpm = int(existing.get('max_rpm', 0))
+            self.log.info(f"PWM fan using saved max speed: {self.max_rpm} RPM")
+            return existing
+
+        self.log.info("PWM fan calibration: 100% duty to measure max RPM")
+        self.set_percent(100)
+        samples = []
+        for i in range(max(3, int(settle_seconds))):
+            time.sleep(1)
+            rpm = self.get_speed() or 0
+            samples.append(rpm)
+            self.log.info(f"calibration sample {i + 1}/{settle_seconds}: {rpm} RPM")
+        max_rpm = max(samples) if samples else 0
+        self.max_rpm = max_rpm
+        if max_rpm <= 0:
+            self.log.warning("PWM fan calibration read 0 RPM; will retry on next start")
+            return {'max_rpm': 0}
+        data = {
+            'max_rpm': max_rpm,
+            'pwm_max': 255,
+            'samples': samples,
+        }
+        self.save_calibration(data)
+        self.log.info(f"PWM fan max speed calibrated: {max_rpm} RPM")
+        return data
+
     @log_error
     @check_ready
     def off(self):
-        if not self.is_supported():
-            self.set_state(0)
+        self.set_percent(0)
 
     @log_error
     @check_ready
