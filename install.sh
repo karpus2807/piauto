@@ -51,13 +51,13 @@ echo "== PiAuto Max installer (vendored pironman5, no SunFounder clone) =="
 echo "-- apt packages --"
 if command -v apt-get >/dev/null 2>&1; then
   run_priv apt-get update -y
-  run_priv DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  run_priv env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3 python3-pip python3-venv python3-dev \
     libjpeg-dev libfreetype6-dev libopenjp2-7 \
     kmod i2c-tools build-essential gcc g++ \
     python3-gpiozero
   # InfluxDB is optional history; ignore failure on distros without the package.
-  run_priv DEBIAN_FRONTEND=noninteractive apt-get install -y influxdb || true
+  run_priv env DEBIAN_FRONTEND=noninteractive apt-get install -y influxdb || true
 else
   echo "WARNING: apt-get not found; install system libs yourself."
 fi
@@ -183,4 +183,4 @@ PY
 
 echo "Done. Dashboard: http://<pi-ip>:34001  (hard refresh Ctrl+Shift+R)"
 echo "OLED designer: http://<pi-ip>:34001/oled-designer"
-echo "Upgrade:       http://<pi-ip>:34001/upgrade/"
+echo "Update:        http://<pi-ip>:34001/update/"

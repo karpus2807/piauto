@@ -4,10 +4,21 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.10] - 2026-09-02
+
+### Added
+- Dashboard left-nav **Update** tab: last 3 GitHub Releases, with **Update** or **Downgrade** per tag
+- `NOTES.md` how-to for install, Update tab, OLED, and fans
+- `/update/` URL (old `/upgrade/` still works)
+
+### Changed
+- Installing a release uses `pip --force-reinstall` so older tags can downgrade
+- `install.sh` sets `DEBIAN_FRONTEND=noninteractive` via `env` so apt does not treat it as a package name
+
 ## [2.0.9] - 2026-08-19
 
 ### Added
-- Dashboard **Upgrade** left-nav section: last 3 GitHub Releases, switch to any of them
+- Dashboard **Update** left-nav section: last 3 GitHub Releases, switch to any of them
 - `GET /api/v1.0/get-upgrades`, `POST /api/v1.0/apply-upgrade`, upgrade status polling
 
 ### Changed

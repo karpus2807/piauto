@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Upgrade — Pironman</title>
-  <link rel="stylesheet" href="/upgrade/styles.css"/>
+  <title>Update — Pironman</title>
+  <link rel="stylesheet" href="/update/styles.css"/>
 </head>
 <body class="up-body">
   <div class="up-bar">
     <div class="up-bar-left">
-      <strong>Upgrade</strong>
+      <strong>Update</strong>
       <span id="repo-badge" class="badge">github</span>
       <span id="current-badge" class="badge muted">current —</span>
     </div>
@@ -18,13 +18,15 @@
     </div>
   </div>
   <p class="up-hint">
-    Last <strong>3 GitHub Releases</strong> from this repo. Switch to any of them — the dashboard restarts after install.
+    Last <strong>3 GitHub Releases</strong> from this repo.
+    Install a newer tag to <strong>update</strong>, or an older tag to <strong>downgrade</strong>.
+    The Pironman service restarts after install.
   </p>
   <div id="job-banner" class="banner hidden"></div>
   <div id="error-banner" class="banner error hidden"></div>
   <div id="release-list" class="list">
     <p class="muted">Loading releases…</p>
   </div>
-  <script src="/upgrade/app.js"></script>
+  <script src="/update/app.js"></script>
 </body>
 </html>

@@ -108,6 +108,40 @@ def _is_current_release(tag, versions):
     return bool(t) and t in (auto, dash)
 
 
+def _ver_tuple(value):
+    nums = []
+    for part in re.split(r'[.\-+_]', _norm_tag(value)):
+        if part.isdigit():
+            nums.append(int(part))
+        elif nums:
+            break
+    return tuple(nums) if nums else (0,)
+
+
+def _ver_cmp(left, right):
+    a, b = _ver_tuple(left), _ver_tuple(right)
+    n = max(len(a), len(b))
+    a = a + (0,) * (n - len(a))
+    b = b + (0,) * (n - len(b))
+    if a > b:
+        return 1
+    if a < b:
+        return -1
+    return 0
+
+
+def _direction(tag, versions):
+    if _is_current_release(tag, versions):
+        return 'current'
+    current = versions.get('release_tag') or versions.get('pm_auto') or ''
+    cmp_value = _ver_cmp(tag, current)
+    if cmp_value > 0:
+        return 'update'
+    if cmp_value < 0:
+        return 'downgrade'
+    return 'switch'
+
+
 def _fetch_releases():
     repo = GITHUB_REPO
     url = f'https://api.github.com/repos/{repo}/releases?per_page={RELEASE_LIMIT}'
@@ -269,8 +303,10 @@ def _apply_release(tag):
         root = _extract_root(tar_path, work)
         py = _python_bin()
         _set_status(message=f'Installing {tag} into venv…')
-        _run([py, '-m', 'pip', 'install', '--upgrade', '--no-cache-dir', os.path.join(root, 'pm_dashboard')])
-        _run([py, '-m', 'pip', 'install', '--upgrade', '--no-cache-dir', os.path.join(root, 'pm_auto')])
+        # force-reinstall so older tags can downgrade, not only upgrade
+        pip_install = [py, '-m', 'pip', 'install', '--force-reinstall', '--no-cache-dir']
+        _run(pip_install + [os.path.join(root, 'pm_dashboard')])
+        _run(pip_install + [os.path.join(root, 'pm_auto')])
         versions = _installed_versions(py)
         _write_json(INSTALLED_PATH, {
             'tag': tag,
@@ -294,12 +330,15 @@ def _apply_release(tag):
 
 
 def register_upgrade_routes(app, api_prefix, static_folder):
+    @app.route('/update')
+    @app.route('/update/')
     @app.route('/upgrade')
     @app.route('/upgrade/')
     @cross_origin()
     def upgrade_index():
         return send_from_directory(f'{static_folder}/upgrade', 'index.html')
 
+    @app.route('/update/<path:filename>')
     @app.route('/upgrade/<path:filename>')
     @cross_origin()
     def upgrade_assets(filename):
@@ -319,6 +358,7 @@ def register_upgrade_routes(app, api_prefix, static_folder):
         for item in catalog.get('releases') or []:
             row = dict(item)
             row['current'] = _is_current_release(row.get('tag'), versions)
+            row['direction'] = _direction(row.get('tag'), versions)
             releases.append(row)
         return {
             'status': error is None,

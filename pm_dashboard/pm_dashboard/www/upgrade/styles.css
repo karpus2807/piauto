@@ -125,8 +125,13 @@
   border: 1px solid #2a3a52;
 }
 
-.btn.danger {
-  background: #3d8bfd;
+.btn.downgrade {
+  background: #d89a2a;
+  color: #1a1204;
+}
+
+.card.older {
+  border-color: #5a4630;
 }
 
 .muted {

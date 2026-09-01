@@ -51,7 +51,8 @@ bash install-oled-designer.sh
 Max keeps a **pm_auto 2.x** stack (`pm_auto.libs` intact) plus a multi-page **OLED Designer**:
 
 - Left nav **OLED** tab → full designer (`home` / `storage` / `network` / `cpu` / `gpu` / `fans` / `ram` / `temps` / `services` / `heart`, custom pages, canvas edit, Apply / Test on OLED)
-- Direct: `http://<pi-ip>:34001/oled-designer`
+- Left nav **Update** tab → last 3 GitHub Releases; update or downgrade in one click
+- Direct: `http://<pi-ip>:34001/oled-designer` · `http://<pi-ip>:34001/update/`
 
 To restore pure SunFounder packages:
 
@@ -177,11 +178,13 @@ Advanced **Control Center**: `http://<pi-ip>:34001/control`
 - Presets: Quiet Desktop, Performance, Server, Night, etc.
 - Uses `dashboard_stats` for hostname / uptime / free storage on live bar
 
-## Upgrade (dashboard)
+## Update (dashboard)
 
-Left nav **Upgrade** lists the last **3 GitHub Releases** of [karpus2807/piauto](https://github.com/karpus2807/piauto). Switch to any of those tags; `pm_auto` + `pm_dashboard` are installed from that release and `pironman5` restarts.
+Left nav **Update** lists the last **3 GitHub Releases** of [karpus2807/piauto](https://github.com/karpus2807/piauto). Newer tags show **Update**, older tags show **Downgrade**. `pm_auto` + `pm_dashboard` install from that tag and `pironman5` restarts.
 
-Direct URL: `http://<pi-ip>:34001/upgrade/`
+Direct URL: `http://<pi-ip>:34001/update/` (alias: `/upgrade/`)
+
+See [NOTES.md](NOTES.md) for the full how-to.
 
 Publish a GitHub **Release** (not only a git tag) so the panel shows notes. Until the first Release exists, the last 3 tags are shown.
 

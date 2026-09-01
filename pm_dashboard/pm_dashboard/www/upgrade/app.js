@@ -46,6 +46,20 @@
     return text.length > 600 ? text.slice(0, 600) + '…' : text;
   }
 
+  function actionFor(rel) {
+    const direction = rel.direction || (rel.current ? 'current' : 'switch');
+    if (direction === 'current') {
+      return { label: 'Running this version', kind: 'current', disabled: true };
+    }
+    if (direction === 'update') {
+      return { label: 'Update to this version', kind: 'update', disabled: false };
+    }
+    if (direction === 'downgrade') {
+      return { label: 'Downgrade to this version', kind: 'downgrade', disabled: false };
+    }
+    return { label: 'Install this version', kind: 'switch', disabled: false };
+  }
+
   function render(data) {
     const current = (data && data.current) || {};
     const releases = (data && data.releases) || [];
@@ -61,13 +75,16 @@
     listEl.innerHTML = '';
     releases.forEach((rel, index) => {
       const card = document.createElement('article');
-      card.className = 'card' + (rel.current ? ' current' : '');
+      const action = actionFor(rel);
+      card.className = 'card' + (rel.current ? ' current' : '') + (action.kind === 'downgrade' ? ' older' : '');
       const when = fmtDate(rel.published_at);
       const badges = [];
       if (index === 0) badges.push('<span class="badge">latest</span>');
       if (rel.current) badges.push('<span class="badge ok">running</span>');
       if (rel.prerelease) badges.push('<span class="badge warn">pre-release</span>');
-      const actionLabel = rel.current ? 'Already installed' : 'Switch to this release';
+      if (action.kind === 'update') badges.push('<span class="badge">update</span>');
+      if (action.kind === 'downgrade') badges.push('<span class="badge warn">older</span>');
+      const btnClass = action.kind === 'downgrade' ? 'btn downgrade' : 'btn';
       card.innerHTML = `
         <div class="card-top">
           <h2>${escapeHtml(rel.name || rel.tag)}</h2>
@@ -75,10 +92,10 @@
         </div>
         <p class="meta">${escapeHtml(rel.tag)}${when ? ' · ' + escapeHtml(when) : ''}</p>
         <pre class="body">${escapeHtml(excerpt(rel.body))}</pre>
-        <button type="button" class="btn" data-tag="${escapeAttr(rel.tag)}" ${rel.current ? 'disabled' : ''}>${actionLabel}</button>
+        <button type="button" class="${btnClass}" data-tag="${escapeAttr(rel.tag)}" ${action.disabled ? 'disabled' : ''}>${action.label}</button>
       `;
       const btn = card.querySelector('button');
-      btn.addEventListener('click', () => applyTag(rel.tag, rel.name));
+      btn.addEventListener('click', () => applyTag(rel.tag, rel.name, action.kind));
       listEl.appendChild(card);
     });
   }
@@ -141,8 +158,11 @@
     }
   }
 
-  async function applyTag(tag, name) {
-    const ok = window.confirm(`Install ${name || tag}?\nThe Pironman service will restart. This can take a minute.`);
+  async function applyTag(tag, name, kind) {
+    const label = name || tag;
+    const verb = kind === 'downgrade' ? 'Downgrade to' : (kind === 'update' ? 'Update to' : 'Install');
+    const extra = kind === 'downgrade' ? '\nThis installs an older version.' : '';
+    const ok = window.confirm(`${verb} ${label}?${extra}\nThe Pironman service will restart. This can take a minute.`);
     if (!ok) return;
     showError('');
     const res = await fetch(`${API}/apply-upgrade`, {
@@ -152,7 +172,7 @@
     });
     const json = await res.json();
     if (!json.status) {
-      showError(json.error || 'Upgrade failed to start');
+      showError(json.error || 'Update failed to start');
       return;
     }
     showJob(json.data);

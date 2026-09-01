@@ -346,7 +346,7 @@ main() {
   install_packages
   restart_service
   show_versions
-  echo "Done. Open http://<pi-ip>:34001 — left nav includes OLED and Upgrade. Hard refresh (Ctrl+Shift+R)."
+  echo "Done. Open http://<pi-ip>:34001 — left nav includes OLED and Update. Hard refresh (Ctrl+Shift+R)."
 }
 
 main "$@"
