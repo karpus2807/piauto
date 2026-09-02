@@ -4,7 +4,7 @@ Practical guide for the Pironman 5 Max stack in this repo: OLED carousel, dashbo
 
 Repo: [github.com/karpus2807/piauto](https://github.com/karpus2807/piauto)
 
-Dashboard: `http://<pi-ip>:34001`
+Dashboard: `http://<pi-ip>:34001` or `https://piauto.krserver.cloud`
 
 ---
 

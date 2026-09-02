@@ -8,6 +8,7 @@ from flask import request, send_from_directory
 from flask_cors import CORS, cross_origin
 from importlib.resources import files as resource_files
 from werkzeug.serving import make_server
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .data_logger import DataLogger
 from .database import Database
@@ -41,6 +42,7 @@ __restart_service__ = lambda: None
 __db__ = None
 __data_logger__ = None
 __app__ = flask.Flask(__name__, static_folder=__www_path__)
+__app__.wsgi_app = ProxyFix(__app__.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 __app__.logger.setLevel(logging.WARN)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)

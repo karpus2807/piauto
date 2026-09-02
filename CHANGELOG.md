@@ -4,6 +4,14 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.17] - 2026-09-03
+
+### Added
+- Nginx reverse-proxy example for `https://piauto.krserver.cloud` → local `:34001`
+
+### Changed
+- Dashboard trusts `X-Forwarded-*` headers (`ProxyFix`) so HTTPS reverse proxies work correctly
+
 ## [2.0.16] - 2026-09-02
 
 ### Fixed
