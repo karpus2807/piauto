@@ -4,6 +4,12 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.16] - 2026-09-02
+
+### Fixed
+- Refresh (or reload) on OLED / Fans / Update left the dashboard **blank**: stock React restored `tabIndex` `Update`/`index: 99`, which is not a real panel
+- Extra tab pages are now hosted outside the React `#root` so a refresh cannot unmount them
+
 ## [2.0.15] - 2026-09-02
 
 ### Added

@@ -1,10 +1,13 @@
 /**
- * Inject extra left-nav items (OLED, Fans, Update) into the stock MUI drawer
- * and show their pages in the main content area (iframe).
+ * Inject extra left-nav items (OLED, Fans, Update) into the stock MUI drawer.
+ * Extra pages live in a host *outside* #root so React re-renders / refresh
+ * cannot unmount them or blank the whole dashboard.
  */
 (function () {
-  const TAB_KEY = 'pm-dashboard-tabIndex';
+  const STOCK_TAB_KEY = 'pm-dashboard-tabIndex';
+  const EXTRA_TAB_KEY = 'piauto-extra-tab';
   const API = '/api/v1.0';
+  const STOCK_TABS = ['Dashboard', 'History', 'Log'];
 
   const EXTRA_TABS = [
     {
@@ -37,8 +40,9 @@
     oledOk: null,
     buttons: {},
     iframes: {},
-    originalMainChildren: null,
-    restored: false,
+    host: null,
+    activeId: null,
+    stockBound: false,
   };
 
   function qs(sel, root) {
@@ -54,10 +58,6 @@
     const dash = texts.find((el) => (el.textContent || '').trim() === 'Dashboard');
     if (!dash) return null;
     return dash.closest('.MuiList-root') || dash.closest('ul');
-  }
-
-  function findMain() {
-    return qs('main.main') || qs('main') || qs('[class*="Main"]');
   }
 
   function listButtons(list) {
@@ -78,6 +78,115 @@
     return extraButtons().includes(btn);
   }
 
+  function readJson(key) {
+    try {
+      return JSON.parse(window.localStorage.getItem(key) || 'null');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeJson(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (_) { /* ignore */ }
+  }
+
+  function sanitizeStockTab() {
+    const saved = readJson(STOCK_TAB_KEY);
+    if (!saved || typeof saved !== 'object') {
+      writeJson(STOCK_TAB_KEY, { text: 'Dashboard', index: 0 });
+      return;
+    }
+    const extra = EXTRA_TABS.find((t) => (
+      t.text === saved.text || t.id === saved.id || (saved.text === 'Upgrade' && t.id === 'upgrade')
+    ));
+    if (extra) {
+      if (!readJson(EXTRA_TAB_KEY)) writeJson(EXTRA_TAB_KEY, { id: extra.id, text: extra.text });
+      writeJson(STOCK_TAB_KEY, { text: 'Dashboard', index: 0 });
+      return;
+    }
+    const idx = Number(saved.index);
+    if (!STOCK_TABS.includes(saved.text) || !Number.isFinite(idx) || idx < 0 || idx > 20) {
+      writeJson(STOCK_TAB_KEY, { text: 'Dashboard', index: 0 });
+    }
+  }
+
+  function extraHost() {
+    if (state.host && document.body.contains(state.host)) return state.host;
+    let host = document.getElementById('piauto-extra-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'piauto-extra-host';
+      host.setAttribute('aria-live', 'polite');
+      document.body.appendChild(host);
+    }
+    host.style.cssText = [
+      'position:fixed',
+      'top:48px',
+      'left:0',
+      'right:0',
+      'bottom:0',
+      'z-index:1050',
+      'display:none',
+      'background:#0b0f14',
+    ].join(';');
+    state.host = host;
+    return host;
+  }
+
+  function layoutHost() {
+    const host = extraHost();
+    const appbar = qs('.MuiAppBar-root');
+    const drawer = qs('.MuiDrawer-paper');
+    let top = 48;
+    let left = 0;
+    if (appbar) {
+      const r = appbar.getBoundingClientRect();
+      if (r.height) top = Math.round(r.bottom);
+    }
+    if (drawer) {
+      const r = drawer.getBoundingClientRect();
+      if (r.width > 64 && r.left < 8 && r.bottom > 80) left = Math.round(r.right);
+    }
+    host.style.top = top + 'px';
+    host.style.left = left + 'px';
+  }
+
+  function hideExtraPanels() {
+    state.activeId = null;
+    try { window.localStorage.removeItem(EXTRA_TAB_KEY); } catch (_) { /* ignore */ }
+    extraButtons().forEach((btn) => setSelected(btn, false));
+    if (state.host) state.host.style.display = 'none';
+    Object.values(state.iframes).forEach((frame) => {
+      frame.style.display = 'none';
+    });
+  }
+
+  function showTab(tab) {
+    const host = extraHost();
+    layoutHost();
+    if (!state.iframes[tab.id]) {
+      const iframe = document.createElement('iframe');
+      iframe.id = 'piauto-frame-' + tab.id;
+      iframe.dataset.piautoFrame = tab.id;
+      iframe.src = tab.src;
+      iframe.title = tab.title;
+      iframe.style.cssText = 'border:0;width:100%;height:100%;background:#0b0f14;display:block;';
+      host.appendChild(iframe);
+      state.iframes[tab.id] = iframe;
+    }
+    Object.entries(state.iframes).forEach(([id, frame]) => {
+      if (!host.contains(frame)) host.appendChild(frame);
+      frame.style.display = id === tab.id ? 'block' : 'none';
+    });
+    host.style.display = 'block';
+    state.activeId = tab.id;
+    writeJson(EXTRA_TAB_KEY, { id: tab.id, text: tab.text });
+    // Keep React on a real stock tab so it never renders an empty main view.
+    writeJson(STOCK_TAB_KEY, { text: 'Dashboard', index: 0 });
+  }
+
   function clearReactSelection(list) {
     listButtons(list).forEach((btn) => {
       if (isExtraButton(btn)) return;
@@ -85,54 +194,16 @@
     });
   }
 
-  function hideExtraPanels() {
-    const main = findMain();
-    if (!main) return;
-    Object.values(state.iframes).forEach((frame) => {
-      frame.style.display = 'none';
-    });
-    qsa(':scope > *', main).forEach((child) => {
-      if (child.dataset && child.dataset.piautoFrame) return;
-      if (state.originalMainChildren && state.originalMainChildren.has(child)) {
-        child.style.display = state.originalMainChildren.get(child);
-      } else {
-        child.style.removeProperty('display');
-      }
-    });
-  }
-
-  function showTab(tab) {
-    const main = findMain();
-    if (!main) return;
-    if (!state.iframes[tab.id]) {
-      const iframe = document.createElement('iframe');
-      iframe.id = 'piauto-frame-' + tab.id;
-      iframe.dataset.piautoFrame = tab.id;
-      iframe.src = tab.src;
-      iframe.title = tab.title;
-      iframe.style.cssText = 'border:0;width:100%;height:calc(100vh - 56px);min-height:640px;background:#0b0f14;display:block;';
-      main.appendChild(iframe);
-      state.iframes[tab.id] = iframe;
-    }
-    if (!state.originalMainChildren) state.originalMainChildren = new WeakMap();
-    qsa(':scope > *', main).forEach((child) => {
-      if (child.dataset && child.dataset.piautoFrame) return;
-      if (!state.originalMainChildren.has(child)) {
-        state.originalMainChildren.set(child, child.style.display || '');
-      }
-      child.style.display = 'none';
-    });
-    Object.entries(state.iframes).forEach(([id, frame]) => {
-      frame.style.display = id === tab.id ? 'block' : 'none';
-    });
-    try {
-      window.localStorage.setItem(TAB_KEY, JSON.stringify({ text: tab.text, index: 99, id: tab.id }));
-    } catch (_) { /* ignore */ }
-  }
-
   function onStockTabClick() {
     hideExtraPanels();
-    extraButtons().forEach((btn) => setSelected(btn, false));
+  }
+
+  function bindStockClicks(list) {
+    listButtons(list).forEach((b) => {
+      if (isExtraButton(b)) return;
+      b.addEventListener('click', onStockTabClick, true);
+    });
+    state.stockBound = true;
   }
 
   function ensureItem(list, tab) {
@@ -164,31 +235,20 @@
     });
     list.appendChild(item);
     state.buttons[tab.id] = btn;
-
-    listButtons(list).forEach((b) => {
-      if (isExtraButton(b)) return;
-      b.addEventListener('click', onStockTabClick, true);
-    });
+    bindStockClicks(list);
   }
 
   function restoreSelection(list) {
-    if (state.restored) return;
-    state.restored = true;
-    try {
-      const saved = JSON.parse(window.localStorage.getItem(TAB_KEY) || 'null');
-      if (!saved) return;
-      const tab = EXTRA_TABS.find((t) => (
-        t.text === saved.text || t.id === saved.id || (saved.text === 'Upgrade' && t.id === 'upgrade')
-      ));
-      if (!tab || !state.buttons[tab.id]) {
-        state.restored = false;
-        return;
-      }
-      clearReactSelection(list);
-      extraButtons().forEach((b) => setSelected(b, false));
-      setSelected(state.buttons[tab.id], true);
-      showTab(tab);
-    } catch (_) { /* ignore */ }
+    sanitizeStockTab();
+    const saved = readJson(EXTRA_TAB_KEY);
+    if (!saved) return;
+    const tab = EXTRA_TABS.find((t) => (
+      t.text === saved.text || t.id === saved.id || (saved.text === 'Upgrade' && t.id === 'upgrade')
+    ));
+    if (!tab || !state.buttons[tab.id]) return;
+    extraButtons().forEach((b) => setSelected(b, false));
+    setSelected(state.buttons[tab.id], true);
+    showTab(tab);
   }
 
   async function hasOledPeripheral() {
@@ -205,6 +265,7 @@
   }
 
   async function tryInject() {
+    sanitizeStockTab();
     const list = findNavList();
     if (!list) return;
     const oledOk = await hasOledPeripheral();
@@ -213,22 +274,40 @@
       ensureItem(list, tab);
     });
     restoreSelection(list);
+    if (state.activeId) layoutHost();
   }
 
-  const obs = new MutationObserver(() => {
+  sanitizeStockTab();
+
+  const obs = new MutationObserver((records) => {
+    const onlyHost = records.every((rec) => {
+      const node = rec.target;
+      if (!node) return false;
+      if (node.id === 'piauto-extra-host') return true;
+      return !!(node.closest && node.closest('#piauto-extra-host'));
+    });
+    if (onlyHost) return;
     tryInject();
   });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+  function watch() {
+    const root = document.getElementById('root');
+    obs.observe(root || document.documentElement, { childList: true, subtree: true });
+  }
+  window.addEventListener('resize', layoutHost);
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => tryInject());
+    document.addEventListener('DOMContentLoaded', () => {
+      watch();
+      tryInject();
+    });
   } else {
+    watch();
     tryInject();
   }
   let n = 0;
   const timer = setInterval(() => {
     tryInject();
     n += 1;
-    if (n > 40) clearInterval(timer);
+    if (n > 80) clearInterval(timer);
   }, 250);
 })();

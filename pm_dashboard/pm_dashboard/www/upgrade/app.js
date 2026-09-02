@@ -114,15 +114,26 @@
 
   async function load(refresh) {
     showError('');
-    const url = `${API}/get-upgrades${refresh ? '?refresh=1' : ''}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json.error) showError(json.error);
-    render((json && json.data) || {});
-    showJob(json && json.data && json.data.job);
-    const job = json && json.data && json.data.job;
-    if (job && job.state === 'running') startPoll();
-    return json;
+    if (refreshBtn) refreshBtn.disabled = true;
+    try {
+      const url = `${API}/get-upgrades${refresh ? '?refresh=1' : ''}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.error) showError(json.error);
+      render((json && json.data) || {});
+      showJob(json && json.data && json.data.job);
+      const job = json && json.data && json.data.job;
+      if (job && job.state === 'running') startPoll();
+      return json;
+    } catch (err) {
+      showError(String(err && err.message ? err.message : err));
+      if (listEl && !listEl.children.length) {
+        listEl.innerHTML = '<p class="muted">Could not load releases. Try Refresh again.</p>';
+      }
+      return null;
+    } finally {
+      if (refreshBtn) refreshBtn.disabled = false;
+    }
   }
 
   async function poll() {
@@ -179,7 +190,9 @@
     startPoll();
   }
 
-  refreshBtn.addEventListener('click', () => load(true));
+  refreshBtn.addEventListener('click', () => {
+    load(true).catch((err) => showError(String(err)));
+  });
   load(false).catch((err) => {
     showError(String(err));
     listEl.innerHTML = '<p class="muted">Could not load releases.</p>';
