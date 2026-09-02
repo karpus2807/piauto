@@ -1,5 +1,5 @@
 /**
- * Inject extra left-nav items (OLED, Update) into the stock MUI drawer
+ * Inject extra left-nav items (OLED, Fans, Update) into the stock MUI drawer
  * and show their pages in the main content area (iframe).
  */
 (function () {
@@ -14,6 +14,14 @@
       title: 'OLED Designer',
       needOled: true,
       icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h3v2h10v-2h3c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z"/></svg>',
+    },
+    {
+      id: 'fans',
+      text: 'Fans',
+      src: '/fan-controls/',
+      title: 'Fan controls',
+      needOled: false,
+      icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a3 3 0 0 1 1 5.83V9.1A4.5 4.5 0 0 1 16.9 13h1.27A3 3 0 1 1 18 19h-.1A4.5 4.5 0 0 1 13.9 16.9v-.01A4.48 4.48 0 0 1 12 17a4.48 4.48 0 0 1-1.9-.11v.01A4.5 4.5 0 0 1 6.1 19H6a3 3 0 1 1-.17-6h1.27A4.5 4.5 0 0 1 11 9.1V7.83A3 3 0 0 1 12 2zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm7 12a1 1 0 1 0 0 2 1 1 0 0 0 0-2zM5 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm7-5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>',
     },
     {
       id: 'upgrade',

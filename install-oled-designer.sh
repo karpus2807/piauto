@@ -281,10 +281,21 @@ restart_service() {
     echo "systemctl not found; skip service restart."
     return 0
   fi
+  local unit_src=""
+  if [[ -n "${LOCAL_ROOT}" && -f "${LOCAL_ROOT}/vendor/pironman5/bin/pironman5.service" ]]; then
+    unit_src="${LOCAL_ROOT}/vendor/pironman5/bin/pironman5.service"
+  fi
+  if [[ -n "${unit_src}" ]]; then
+    echo "Installing ${SERVICE}.service (enable + Restart=always)..."
+    run_priv cp "${unit_src}" "/etc/systemd/system/${SERVICE}.service"
+    run_priv systemctl daemon-reload
+  fi
   if ! systemctl list-unit-files "${SERVICE}.service" >/dev/null 2>&1; then
     echo "No ${SERVICE}.service unit found; packages installed, skip restart."
     return 0
   fi
+  echo "Enabling ${SERVICE}.service so it starts after reboot..."
+  run_priv systemctl enable "${SERVICE}.service" || true
   echo "Restarting ${SERVICE}.service..."
   if run_priv systemctl restart "${SERVICE}"; then
     sleep 2

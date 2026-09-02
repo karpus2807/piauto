@@ -76,6 +76,15 @@ def collect_metrics_from_data(data, config=None, slide=0):
     gpu_temp = data.get('gpu_temperature')
     gpio_fan = data.get('gpio_fan_state')
     pwm = data.get('pwm_fan_speed')
+    disk_temps = []
+    for key, val in data.items():
+        if not (isinstance(key, str) and key.startswith('disk_') and key.endswith('_temperature')):
+            continue
+        name = key[5:-12]
+        try:
+            disk_temps.append(f'{name} {float(val):.0f}{unit}')
+        except (TypeError, ValueError):
+            continue
 
     m = {
         'cpu_temperature': cpu_temp,
@@ -88,7 +97,7 @@ def collect_metrics_from_data(data, config=None, slide=0):
         'storage_percent_free': max(0, 100 - storage_pct),
         'storage_line': f'STORE {storage_pct:.0f}%',
         'storage_detail': storage_detail,
-        'storage_temp': '',
+        'storage_temp': disk_temps[0] if disk_temps else '',
         'ip_line': ip_line,
         'gpu_percent': 0,
         'gpu_temperature': gpu_temp,
@@ -103,11 +112,11 @@ def collect_metrics_from_data(data, config=None, slide=0):
         'gpio_fan_state': gpio_fan,
         'hostname': data.get('hostname') or '',
         'uptime_seconds': data.get('uptime_seconds') or 0,
-        'top_cpu_1': '',
-        'top_cpu_2': '',
-        'top_cpu_3': '',
-        'disk_temp_line_1': '',
-        'disk_temp_line_2': '',
+        'top_cpu_1': data.get('top_cpu_1') or '',
+        'top_cpu_2': data.get('top_cpu_2') or '',
+        'top_cpu_3': data.get('top_cpu_3') or '',
+        'disk_temp_line_1': disk_temps[0] if disk_temps else '',
+        'disk_temp_line_2': disk_temps[1] if len(disk_temps) > 1 else '',
     }
     for i in range(4):
         if i < len(ip_items):

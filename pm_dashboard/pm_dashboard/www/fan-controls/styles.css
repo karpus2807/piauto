@@ -1,0 +1,103 @@
+body.pm-body {
+  background: radial-gradient(1200px 600px at 10% -10%, #152436 0%, #0b0f14 45%);
+  min-height: 100vh;
+  color: #e8eef7;
+}
+
+.pm-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(16, 24, 32, 0.94);
+  border-bottom: 1px solid #2a3a52;
+  backdrop-filter: blur(10px);
+  z-index: 1030;
+}
+
+.pm-actionbar-left,
+.pm-actionbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pm-actionbar-title {
+  color: #e8eef7;
+  font-size: 0.95rem;
+}
+
+.pm-hint {
+  background: #12304a !important;
+  color: #9fd3ff !important;
+}
+
+.pm-calib-card {
+  background: linear-gradient(90deg, #2a2108 0%, #141c27 55%);
+  box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.35), 0 12px 28px rgba(0, 0, 0, 0.25);
+}
+
+.js-calibrate {
+  font-weight: 700;
+}
+
+.profile-card {
+  background: linear-gradient(180deg, #182232 0%, #121820 100%);
+  border: 1px solid #2a3a52;
+  border-radius: 14px;
+  height: 100%;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.profile-card:hover {
+  transform: translateY(-2px);
+  border-color: #3d8bfd;
+}
+
+.profile-card.active {
+  border-color: #3d8bfd;
+  box-shadow: 0 0 0 1px rgba(61, 139, 253, 0.45), 0 10px 30px rgba(13, 40, 80, 0.35);
+}
+
+.profile-card.rgb-card.active {
+  border-color: #c084fc;
+  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.4);
+}
+
+.step-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 0 4px 4px 0;
+  border-radius: 999px;
+  background: #1e2a3a;
+  color: #9fd3ff;
+  font-size: 0.72rem;
+}
+
+.live-tile {
+  background: #101820;
+  border: 1px solid #2a3a52;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.live-tile .k {
+  color: #9aa8b5;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.live-tile .v {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e8eef7;
+}
+
+.bench-line {
+  font-size: 0.78rem;
+  color: #9fd3ff;
+}

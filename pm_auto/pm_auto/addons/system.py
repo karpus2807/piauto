@@ -19,7 +19,98 @@ from sf_rpi_status import \
     get_network_speed
 
 import time
+import socket
 import asyncio
+
+
+def _detect_network_types():
+    from os import listdir
+    from os.path import exists, isdir
+    types = []
+    try:
+        names = listdir('/sys/class/net/')
+    except Exception:
+        names = []
+    stats = {}
+    try:
+        from psutil import net_if_stats
+        stats = net_if_stats()
+    except Exception:
+        stats = {}
+    for name in names:
+        if name == 'lo':
+            continue
+        isup = False
+        if name in stats:
+            isup = bool(stats[name].isup)
+        else:
+            try:
+                with open(f'/sys/class/net/{name}/operstate', 'r') as f:
+                    isup = f.read().strip() in ('up', 'unknown')
+            except Exception:
+                continue
+        if not isup:
+            continue
+        wireless = isdir(f'/sys/class/net/{name}/wireless') or name.startswith(('wlan', 'wlp', 'wls', 'wlx'))
+        virtual = exists(f'/sys/devices/virtual/net/{name}')
+        wired = name.startswith(('eth', 'enp', 'ens', 'eno', 'end', 'enx'))
+        vpn = name.startswith(('zt', 'wg', 'tun', 'tap', 'tailscale'))
+        if wireless:
+            label = 'Wireless'
+        elif vpn or (virtual and not wired):
+            label = 'VPN'
+        else:
+            label = 'Wired'
+        if label not in types:
+            types.append(label)
+    if types:
+        return types
+    try:
+        return list(get_network_connection_type() or [])
+    except Exception:
+        return []
+
+
+def _format_network_type(types):
+    seen = []
+    for item in types or []:
+        if item and item not in seen:
+            seen.append(item)
+    return '&'.join(seen) if seen else 'None'
+
+
+def _top_cpu_lines(addon):
+    """Best-effort top-3 process names for the OLED Services page."""
+    try:
+        import psutil
+    except ImportError:
+        return ['', '', '']
+    try:
+        if not getattr(addon, '_proc_cpu_primed', False):
+            for proc in psutil.process_iter(['pid']):
+                try:
+                    proc.cpu_percent(None)
+                except Exception:
+                    continue
+            addon._proc_cpu_primed = True
+            return ['measuring...', '', '']
+        rows = []
+        for proc in psutil.process_iter(['name']):
+            try:
+                rows.append((float(proc.cpu_percent(None) or 0), proc.info.get('name') or '?'))
+            except Exception:
+                continue
+        rows.sort(key=lambda item: item[0], reverse=True)
+        lines = []
+        for pct, name in rows[:3]:
+            short = str(name)[:12]
+            lines.append(f'{short} {pct:.0f}%')
+        while len(lines) < 3:
+            lines.append('')
+        return lines
+    except Exception:
+        return ['', '', '']
+
 
 class SystemAddon(Addon):
     def __init__(self, *args, **kwargs):
@@ -32,6 +123,7 @@ class SystemAddon(Addon):
         # A list of last disk keys, for knowing which disk is gone,
         # and need to be removed from data
         self.disk_keys = []
+        self._proc_cpu_primed = False
 
     @log_error
     def fetch_ip_data(self):
@@ -42,7 +134,7 @@ class SystemAddon(Addon):
         macs = get_macs()
         for name in macs:
             result[f'mac_{name}'] = macs[name]
-        result['network_type'] = '&'.join(get_network_connection_type())
+        result['network_type'] = _format_network_type(_detect_network_types())
         return result
 
     @log_error
@@ -78,7 +170,13 @@ class SystemAddon(Addon):
     @log_error
     def task_1s(self):
         data = {}
-        data['boot_time'] = float(get_boot_time())
+        boot = float(get_boot_time())
+        data['boot_time'] = boot
+        data['uptime_seconds'] = max(0, int(time.time() - boot)) if boot else 0
+        try:
+            data['hostname'] = socket.gethostname()
+        except Exception:
+            data['hostname'] = ''
 
         data['cpu_temperature'] = float(get_cpu_temperature()) if get_cpu_temperature() is not None else None
         data['gpu_temperature'] = float(get_gpu_temperature()) if get_gpu_temperature() is not None else None
@@ -102,6 +200,7 @@ class SystemAddon(Addon):
         network_speed = get_network_speed()
         data['network_upload_speed'] = int(network_speed.upload)
         data['network_download_speed'] = int(network_speed.download)
+        data['network_type'] = _format_network_type(_detect_network_types())
     
         self.event.publish('data_changed', data)
 
@@ -135,6 +234,10 @@ class SystemAddon(Addon):
                 delete_keys.append(key)
         # Update disk keys
         self.disk_keys = keys
+        top = _top_cpu_lines(self)
+        data['top_cpu_1'] = top[0]
+        data['top_cpu_2'] = top[1]
+        data['top_cpu_3'] = top[2]
         
         self.event.publish('data_changed', data, delete_keys=delete_keys)
 

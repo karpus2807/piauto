@@ -56,6 +56,13 @@ class OLEDAddon(Addon):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        if not hasattr(self, 'rotation'):
+            self.rotation = int(self.config.get('oled_rotation') or 0)
+        if not hasattr(self, 'enable'):
+            self.enable = bool(self.config.get('oled_enable', True))
+        if not hasattr(self, 'oled_pages'):
+            self.oled_pages = list(self.config.get('oled_pages') or [])
+
         try:
             self.oled = SSD1306(rotation=self.rotation)
         except Exception as e:
@@ -72,9 +79,14 @@ class OLEDAddon(Addon):
         self.is_wake_page_next = False
         self.is_page_prev = False
         self.data = {}
-        self._designer_enabled = False
-        self._designer_layout = build_default_layout()
-        self._designer_test = None
+        # Keep designer layout/enabled already loaded from config.json in
+        # update_config(); do not reset to stock templates after reboot.
+        if not hasattr(self, '_designer_enabled'):
+            self._designer_enabled = False
+        if not hasattr(self, '_designer_layout') or self._designer_layout is None:
+            self._designer_layout = build_default_layout()
+        if not hasattr(self, '_designer_test'):
+            self._designer_test = None
         self._page_shown_at = 0
         self._page_ids = []
 
@@ -112,6 +124,10 @@ class OLEDAddon(Addon):
             A dict of config patch to update the config file.
         '''
         patch = {}
+        config = config or {}
+        for key, value in config.items():
+            if key in self.DEFAULT_CONFIG:
+                self.config[key] = value
         if "oled_enable" in config:
             _enable = bool(config['oled_enable'])
             self.enable = _enable

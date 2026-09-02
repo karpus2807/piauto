@@ -109,9 +109,11 @@ sudo systemctl restart pironman5
 | PWM **tower** | Pi 5 `pwm1` (0–255 duty) | OLED `TOWER nnnn RPM` |
 | GPIO **side** | GPIO 6 on/off | OLED `SIDE ON/OFF` |
 
-PWM curve: off &lt;34°C, 25% 34–38, 50% 38–41, 75% 41–43, 100% above 43°C. First start calibrates max RPM to `/opt/pironman5/fan_calibration.json`.
+PWM curve comes from the **Fans** page profile (Silent / Quiet / Balanced / custom steps). Saved in `/opt/pironman5/config.json` and restored after reboot. First start calibrates max RPM to `/opt/pironman5/fan_calibration.json`.
 
 Dashboard fan-mode / LED APIs change the **side** GPIO fan only, not the PWM curve.
+
+`pironman5.service` is enabled on install and uses `Restart=always` so fans/OLED/dashboard come back after reboot.
 
 ---
 

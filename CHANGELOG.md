@@ -4,6 +4,34 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.14] - 2026-09-02
+
+### Fixed
+- PWM fan profile, custom curves, and GPIO fan mode ignored after reboot (`FanAddon` kept DEFAULT_CONFIG instead of `config.json`)
+- Custom profile id resolved before custom curves were loaded, so it fell back to Balanced on start
+- OLED designer layout/enabled reset to stock templates after every restart
+- OLED **Services** page (`top_cpu_1`/`2`/`3`) was always blank
+- `pironman5.service` could die on boot (I2C/GPIO race) and stay down — now `Restart=always` and enabled on overlay install
+- Calibration hold duty no longer sticks across reboot
+
+### Changed
+- systemd unit waits for `network-online.target` / filesystems, then auto-restarts every 5s if the process exits
+
+## [2.0.13] - 2026-09-02
+
+### Changed
+- Fan page: large **Calibrate PWM max** panel at the top (plus header and PWM-section buttons)
+
+## [2.0.12] - 2026-09-02
+
+### Fixed
+- Dashboard Network card showed Type **undefined** because `network_type` was never published in the live history stream
+
+## [2.0.11] - 2026-09-02
+
+### Added
+- Dashboard left-nav **Fans** page: PWM profiles, custom step curves, RGB Pironman styles, calibration, live benchmark popup
+
 ## [2.0.10] - 2026-09-02
 
 ### Added

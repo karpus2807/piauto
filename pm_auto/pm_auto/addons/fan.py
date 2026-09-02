@@ -1,5 +1,10 @@
 from pm_auto.libs.addon import Addon
 from pm_auto.libs.utils import log_error
+from pm_auto.addons.fan_profiles import (
+    resolve_profile,
+    sanitize_custom,
+    steps_to_levels,
+)
 
 import os
 import json
@@ -20,34 +25,7 @@ FANS = [
 GPIO_FAN_MODES = ['Always On', 'Performance', 'Cool', 'Balanced', 'Quiet']
 # PWM duty is percent of calibrated max (pwm1 0-255). ~0.3°C down-hysteresis
 # so the tight 34/38/41/43 bands do not chatter.
-FAN_LEVELS = [
-    {
-        "name": "OFF",
-        "low": -200,
-        "high": 34,
-        "percent": 0,
-    }, {
-        "name": "LOW",
-        "low": 33.7,
-        "high": 38,
-        "percent": 25,
-    }, {
-        "name": "MEDIUM",
-        "low": 37.7,
-        "high": 41,
-        "percent": 50,
-    }, {
-        "name": "HIGH",
-        "low": 40.7,
-        "high": 43,
-        "percent": 75,
-    }, {
-        "name": "FULL",
-        "low": 42.7,
-        "high": 200,
-        "percent": 100,
-    },
-]
+FAN_LEVELS = steps_to_levels(resolve_profile('balanced')['steps'])
 PWM_FAN_CALIBRATION_FILE = '/opt/pironman5/fan_calibration.json'
 
 INTERVAL = 1
@@ -59,6 +37,10 @@ class FanAddon(Addon):
         "gpio_fan_led_pin": 5,
         "gpio_fan_led": 'follow',
         "gpio_fan_mode": 1,
+        "pwm_fan_profile": "balanced",
+        "pwm_fan_custom_profiles": [],
+        "pwm_fan_hold_percent": None,
+        "pwm_fan_benchmarks": {},
     }
 
     @log_error
@@ -99,7 +81,17 @@ class FanAddon(Addon):
         self.level = 0
         self.initial = True
         self._calib_done = False
+        # Re-read after hardware init. self.config already merged saved
+        # values in update_config(); never resume a calibration hold across reboot.
         self.gpio_fan_mode = self.config.get('gpio_fan_mode', 1)
+        self.hold_percent = None
+        self.profile_id = self.config.get('pwm_fan_profile', 'balanced')
+        self.custom_profiles = [
+            sanitize_custom(item) for item in (self.config.get('pwm_fan_custom_profiles') or [])
+            if isinstance(item, dict)
+        ]
+        self.levels = steps_to_levels(resolve_profile(self.profile_id, self.custom_profiles)['steps'])
+        self.log.info(f"PWM fan profile on start: {self.profile_id} ({len(self.custom_profiles)} custom)")
         self._is_ready = True
 
     @log_error
@@ -114,6 +106,29 @@ class FanAddon(Addon):
             A dict of config patch to update the config file.
         '''
         patch = {}
+        config = config or {}
+        # Merge saved keys into self.config first. Addon.__init__ copies
+        # DEFAULT_CONFIG only, so without this reboot always falls back to
+        # Balanced / empty custom profiles / default GPIO mode.
+        for key, value in config.items():
+            if key not in self.DEFAULT_CONFIG:
+                continue
+            if init and key == 'pwm_fan_hold_percent':
+                self.config[key] = None
+                continue
+            self.config[key] = value
+        if not hasattr(self, 'custom_profiles'):
+            self.custom_profiles = [
+                sanitize_custom(item)
+                for item in (self.config.get('pwm_fan_custom_profiles') or [])
+                if isinstance(item, dict)
+            ]
+        if not hasattr(self, 'profile_id'):
+            self.profile_id = self.config.get('pwm_fan_profile', 'balanced')
+        if not hasattr(self, 'hold_percent'):
+            self.hold_percent = None
+        if not hasattr(self, 'levels'):
+            self.levels = FAN_LEVELS
         if "gpio_fan_pin" in config:
             _pin = config['gpio_fan_pin']
             if not init and self.gpio_fan.is_ready():
@@ -158,6 +173,50 @@ class FanAddon(Addon):
                     self.log.error(f"Change gpio_fan_led_pin to {_led_pin} failed")
             else:
                 patch['gpio_fan_led_pin'] = _led_pin
+        # Load custom curves before the active profile id so a saved custom_*
+        # id can resolve instead of falling back to Balanced.
+        if "pwm_fan_custom_profiles" in config:
+            customs = config.get('pwm_fan_custom_profiles') or []
+            if isinstance(customs, list):
+                self.custom_profiles = [
+                    sanitize_custom(item) for item in customs if isinstance(item, dict)
+                ]
+                patch['pwm_fan_custom_profiles'] = self.custom_profiles
+                self.levels = steps_to_levels(
+                    resolve_profile(self.profile_id, self.custom_profiles)['steps']
+                )
+                self.log.debug(f"Update pwm_fan_custom_profiles ({len(self.custom_profiles)})")
+        if "pwm_fan_profile" in config:
+            _profile = str(config.get('pwm_fan_profile') or 'balanced')
+            self.profile_id = _profile
+            self.levels = steps_to_levels(resolve_profile(_profile, self.custom_profiles)['steps'])
+            self.level = 0
+            patch['pwm_fan_profile'] = _profile
+            self.log.debug(f"Update pwm_fan_profile to {_profile}")
+        if init:
+            self.hold_percent = None
+            if config.get('pwm_fan_hold_percent') not in (None, ''):
+                patch['pwm_fan_hold_percent'] = None
+        elif "pwm_fan_hold_percent" in config:
+            hold = config.get('pwm_fan_hold_percent')
+            if hold is None or hold == '':
+                self.hold_percent = None
+                patch['pwm_fan_hold_percent'] = None
+            else:
+                try:
+                    self.hold_percent = max(0, min(100, int(hold)))
+                    patch['pwm_fan_hold_percent'] = self.hold_percent
+                except (TypeError, ValueError):
+                    self.log.error(f"Invalid pwm_fan_hold_percent: {hold}")
+        if "pwm_fan_max_speed" in config and getattr(self, 'pwm_fan', None) and self.pwm_fan.is_ready():
+            try:
+                self.pwm_fan.max_rpm = int(config.get('pwm_fan_max_speed') or 0)
+            except (TypeError, ValueError):
+                pass
+        if "pwm_fan_benchmarks" in config:
+            benches = config.get('pwm_fan_benchmarks')
+            if isinstance(benches, dict):
+                patch['pwm_fan_benchmarks'] = benches
         return patch
 
     @log_error
@@ -182,19 +241,40 @@ class FanAddon(Addon):
 
         temperature = self.get_cpu_temperature()
         self.log.debug(f"cpu temperature: {temperature} \'C")
+        levels = self.levels or FAN_LEVELS
+        if self.hold_percent is not None:
+            power = self.hold_percent
+            data['pwm_fan_profile'] = self.profile_id
+            data['pwm_fan_hold'] = True
+            if self.gpio_fan.is_ready():
+                gpio_fan_state = True if self.gpio_fan_mode == 0 else power >= 50
+                data['gpio_fan_state'] = gpio_fan_state
+                self.gpio_fan.set(gpio_fan_state)
+            if self.spc_fan.is_ready():
+                self.spc_fan.set_power(power)
+                data['spc_fan_power'] = power
+            if self.pwm_fan.is_ready():
+                self.pwm_fan.set_percent(power)
+                data['pwm_fan_speed'] = self.pwm_fan.get_speed()
+                if getattr(self.pwm_fan, 'max_rpm', 0):
+                    data['pwm_fan_max_speed'] = self.pwm_fan.max_rpm
+            data['pwm_fan_power'] = power
+            self.event.publish('data_changed', data)
+            return
+
         changed = False
         direction = ""
-        if temperature < FAN_LEVELS[self.level]["low"]:
+        if temperature < levels[self.level]["low"]:
             self.level -= 1
             changed = True
             direction = "low"
-        elif temperature >= FAN_LEVELS[self.level]["high"]:
+        elif temperature >= levels[self.level]["high"]:
             self.level += 1
             changed = True
             direction = "high"
 
-        self.level = max(0, min(self.level, len(FAN_LEVELS) - 1))
-        power = FAN_LEVELS[self.level]['percent']
+        self.level = max(0, min(self.level, len(levels) - 1))
+        power = levels[self.level]['percent']
 
         if self.gpio_fan.is_ready():
             gpio_fan_state = self.level >= self.gpio_fan_mode
@@ -209,11 +289,15 @@ class FanAddon(Addon):
             if getattr(self.pwm_fan, 'max_rpm', 0):
                 data['pwm_fan_max_speed'] = self.pwm_fan.max_rpm
 
+        data['pwm_fan_profile'] = self.profile_id
+        data['pwm_fan_power'] = power
+        data['pwm_fan_hold'] = False
+
         if changed:
-            self.log.info(f"set fan level: {FAN_LEVELS[self.level]['name']}")
+            self.log.info(f"set fan level: {levels[self.level]['name']}")
             self.log.info(f"set fan power: {power}")
             self.log.info(
-                f"cpu temperature: {temperature} \'C, {direction}er than {FAN_LEVELS[self.level][direction]}")
+                f"cpu temperature: {temperature} \'C, {direction}er than {levels[self.level][direction]}")
         elif self.initial:
             self.log.info(f"cpu temperature: {temperature} \'C")
             self.initial = False
@@ -549,9 +633,9 @@ class PWMFan(Fan):
 
     @log_error
     @check_ready
-    def calibrate_max_speed(self, settle_seconds=8):
+    def calibrate_max_speed(self, settle_seconds=8, force=False, on_sample=None):
         existing = self.load_calibration()
-        if existing:
+        if existing and not force:
             self.max_rpm = int(existing.get('max_rpm', 0))
             self.log.info(f"PWM fan using saved max speed: {self.max_rpm} RPM")
             return existing
@@ -559,11 +643,14 @@ class PWMFan(Fan):
         self.log.info("PWM fan calibration: 100% duty to measure max RPM")
         self.set_percent(100)
         samples = []
-        for i in range(max(3, int(settle_seconds))):
+        total = max(3, int(settle_seconds))
+        for i in range(total):
             time.sleep(1)
             rpm = self.get_speed() or 0
             samples.append(rpm)
-            self.log.info(f"calibration sample {i + 1}/{settle_seconds}: {rpm} RPM")
+            self.log.info(f"calibration sample {i + 1}/{total}: {rpm} RPM")
+            if callable(on_sample):
+                on_sample(i + 1, total, rpm)
         max_rpm = max(samples) if samples else 0
         self.max_rpm = max_rpm
         if max_rpm <= 0:

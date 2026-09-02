@@ -389,17 +389,53 @@ net_io_counter = None
 net_io_counter_time = None
 
 def get_network_connection_type():
-    from psutil import net_if_stats
-    interfaces = net_if_stats()
+    from os import listdir
+    from os.path import exists, isdir
     connection_type = []
-    
-    for interface, stats in interfaces.items():
-        if stats.isup:
-            if "eth" in interface or "enp" in interface or "ens" in interface:
-                connection_type.append("Wired")
-            if "wlan" in interface or "wlp" in interface or "wls" in interface:
-                connection_type.append("Wireless")
-    
+    try:
+        names = listdir('/sys/class/net/')
+    except Exception:
+        names = []
+
+    stats = {}
+    try:
+        from psutil import net_if_stats
+        stats = net_if_stats()
+    except Exception:
+        stats = {}
+
+    for name in names:
+        if name == 'lo':
+            continue
+        isup = False
+        if name in stats:
+            isup = bool(stats[name].isup)
+        else:
+            try:
+                with open(f'/sys/class/net/{name}/operstate', 'r') as f:
+                    oper = f.read().strip()
+                isup = oper in ('up', 'unknown')
+            except Exception:
+                continue
+        if not isup:
+            continue
+
+        wireless = isdir(f'/sys/class/net/{name}/wireless') or name.startswith(('wlan', 'wlp', 'wls', 'wlx'))
+        virtual = exists(f'/sys/devices/virtual/net/{name}')
+        wired = name.startswith(('eth', 'enp', 'ens', 'eno', 'end', 'enx'))
+        vpn = name.startswith(('zt', 'wg', 'tun', 'tap', 'tailscale'))
+
+        if wireless:
+            label = 'Wireless'
+        elif vpn or (virtual and not wired):
+            label = 'VPN'
+        elif wired or not virtual:
+            label = 'Wired'
+        else:
+            label = 'VPN'
+        if label not in connection_type:
+            connection_type.append(label)
+
     return connection_type
 
 class NetworkSpeed:

@@ -180,6 +180,21 @@ def _register_upgrader():
 
 _register_upgrader()
 
+def _register_fan_controls():
+    from .fan_control_routes import register_fan_control_routes
+    register_fan_control_routes(
+        __app__,
+        __api_prefix__,
+        __www_path__,
+        {
+            'get_config': lambda: __read_config__() or {},
+            'on_config_changed': lambda config: __on_config_changed__(config),
+            'get_history': lambda n=1: (__read_data__() or {}),
+        },
+    )
+
+_register_fan_controls()
+
 # host API
 @__app__.route(f'{__api_prefix__}/get-version')
 @cross_origin()

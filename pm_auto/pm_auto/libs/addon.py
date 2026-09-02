@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 from typing import Dict, Optional, List
 from zlib import DEF_BUF_SIZE
@@ -15,7 +16,7 @@ class Addon:
         self.log = log or logging.getLogger(__name__)
         self.device_info = device_info
         self._is_ready = False
-        self.config = self.DEFAULT_CONFIG.copy()
+        self.config = copy.deepcopy(self.DEFAULT_CONFIG)
         self.event = event
         self.running = False
         self.peripherals = peripherals or []
