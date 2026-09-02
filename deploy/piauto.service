@@ -1,0 +1,18 @@
+# https://www.freedesktop.org/software/systemd/man/systemd.service.html
+[Unit]
+Description=PiAuto service
+After=network-online.target local-fs.target systemd-modules-load.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/pironman5
+ExecStart=/usr/local/bin/piauto start
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=multi-user.target

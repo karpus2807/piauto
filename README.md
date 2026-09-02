@@ -17,9 +17,17 @@ Installs as Python package **`pm_auto`** (same import name as SunFounder upstrea
 
 Sleep timeout disabled in firmware loop — carousel runs continuously.
 
-## One-command install (Pironman 5 Max upgrade)
+## One-command install
 
-**SunFounder `pironman5` is vendored** in `vendor/pironman5/` (v1.3.18). You do **not** run their installer or clone their repo.
+**SunFounder `pironman5` is vendored** in `vendor/pironman5/` (v1.3.18). You do **not** run their installer.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install.sh | sudo bash
+```
+
+This, in order: OS packages + verify → venv → this repo’s packages → systemd **`piauto.service`**.
+
+From a git clone:
 
 ```bash
 git clone https://github.com/karpus2807/piauto.git
@@ -30,8 +38,8 @@ sudo bash install.sh
 This installs:
 
 - vendored `pironman5` + `sf_rpi_status`
-- this repo’s `pm_auto` + `pm_dashboard` (OLED designer)
-- systemd `pironman5.service`
+- this repo’s `pm_auto` + `pm_dashboard` (OLED designer, Fans, Update)
+- systemd **`piauto.service`** (legacy `pironman5.service` is disabled)
 - apt libs (JPEG/Freetype/i2c) and Python packages (Flask, Pillow, …)
 
 Python wheels can be pre-downloaded into `vendor/python/wheels/` then:
@@ -71,7 +79,7 @@ Optional overrides:
 ```bash
 PIRONMAN5_HOME=/opt/pironman5 \
 PIRONMAN5_VENV=/opt/pironman5/venv \
-PIRONMAN5_SERVICE=pironman5 \
+PIAUTO_SERVICE=piauto \
 PIAUTO_FORCE_GIT=1 \
 PIAUTO_REF=main \
 bash install-oled-designer.sh
@@ -80,10 +88,10 @@ bash install-oled-designer.sh
 ## Upgrade on device
 
 ```bash
-sudo systemctl stop pironman5.service
+sudo systemctl stop piauto.service
 sudo /opt/pironman5/venv/bin/pip3 uninstall pm_auto -y
 sudo /opt/pironman5/venv/bin/pip3 install --upgrade git+https://github.com/karpus2807/piauto.git@main
-sudo systemctl start pironman5.service
+sudo systemctl start piauto.service
 ```
 
 Pinned release (recommended for production):
@@ -105,7 +113,7 @@ sudo /opt/pironman5/venv/bin/pm-auto-oled -ohd 20 -opd 8
 sudo /opt/pironman5/venv/bin/pm-auto-oled --pages home,storage,network,heart
 sudo /opt/pironman5/venv/bin/pm-auto-oled --alert-cpu-temp 75 --alert-disk-percent 85
 sudo /opt/pironman5/venv/bin/pm-auto-oled --show
-sudo systemctl restart pironman5.service
+sudo systemctl restart piauto.service
 ```
 
 Profiles: `full`, `minimal`, `server`
@@ -180,7 +188,7 @@ Advanced **Control Center**: `http://<pi-ip>:34001/control`
 
 ## Update (dashboard)
 
-Left nav **Update** lists the last **3 GitHub Releases** of [karpus2807/piauto](https://github.com/karpus2807/piauto). Newer tags show **Update**, older tags show **Downgrade**. `pm_auto` + `pm_dashboard` install from that tag and `pironman5` restarts.
+Left nav **Update** lists the last **3 GitHub Releases** of [karpus2807/piauto](https://github.com/karpus2807/piauto). Newer tags show **Update**, older tags show **Downgrade**. `pm_auto` + `pm_dashboard` install from that tag and **`piauto`** restarts.
 
 Direct URL: `http://<pi-ip>:34001/update/` (alias: `/upgrade/`)
 

@@ -8,7 +8,7 @@ REPO_URL="${PIAUTO_REPO_URL:-https://github.com/karpus2807/piauto.git}"
 REF="${PIAUTO_REF:-main}"
 PIRONMAN_HOME="${PIRONMAN5_HOME:-/opt/pironman5}"
 VENV_DIR="${PIRONMAN5_VENV:-${PIRONMAN_HOME}/venv}"
-SERVICE="${PIRONMAN5_SERVICE:-pironman5}"
+SERVICE="${PIAUTO_SERVICE:-${PIRONMAN5_SERVICE:-}}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 STOCK_PM_AUTO_URL="${STOCK_PM_AUTO_URL:-git+https://github.com/sunfounder/pm_auto.git@v2.0.5}"
 STOCK_PM_DASH_URL="${STOCK_PM_DASH_URL:-git+https://github.com/sunfounder/pm_dashboard.git@chore/bump-2.0.3}"
@@ -281,8 +281,18 @@ restart_service() {
     echo "systemctl not found; skip service restart."
     return 0
   fi
+  if [[ -z "${SERVICE}" ]]; then
+    SERVICE=piauto
+  fi
+  if [[ -x "${VENV_DIR}/bin/pironman5" ]]; then
+    run_priv ln -sfn "${VENV_DIR}/bin/pironman5" /usr/local/bin/pironman5 || true
+    run_priv ln -sfn "${VENV_DIR}/bin/pironman5" /usr/local/bin/piauto || true
+  fi
   local unit_src=""
-  if [[ -n "${LOCAL_ROOT}" && -f "${LOCAL_ROOT}/vendor/pironman5/bin/pironman5.service" ]]; then
+  if [[ -n "${LOCAL_ROOT}" && -f "${LOCAL_ROOT}/deploy/piauto.service" ]]; then
+    unit_src="${LOCAL_ROOT}/deploy/piauto.service"
+    SERVICE=piauto
+  elif [[ -n "${LOCAL_ROOT}" && -f "${LOCAL_ROOT}/vendor/pironman5/bin/pironman5.service" ]]; then
     unit_src="${LOCAL_ROOT}/vendor/pironman5/bin/pironman5.service"
   fi
   if [[ -n "${unit_src}" ]]; then
@@ -293,6 +303,10 @@ restart_service() {
   if ! systemctl list-unit-files "${SERVICE}.service" >/dev/null 2>&1; then
     echo "No ${SERVICE}.service unit found; packages installed, skip restart."
     return 0
+  fi
+  if [[ "${SERVICE}" == "piauto" ]] && [[ -f /etc/systemd/system/pironman5.service ]]; then
+    echo "Stopping legacy pironman5.service (replaced by piauto)..."
+    run_priv systemctl disable --now pironman5.service || true
   fi
   echo "Enabling ${SERVICE}.service so it starts after reboot..."
   run_priv systemctl enable "${SERVICE}.service" || true

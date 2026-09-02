@@ -23,8 +23,17 @@ STATUS_PATH = os.environ.get('PIAUTO_UPGRADE_STATUS', '/opt/pironman5/upgrade-st
 INSTALLED_PATH = os.environ.get('PIAUTO_INSTALLED_RELEASE', '/opt/pironman5/installed-release.json')
 LOG_PATH = os.environ.get('PIAUTO_UPGRADE_LOG', '/var/log/pironman5/upgrade.log')
 VENV_PYTHON = os.environ.get('PIAUTO_VENV_PYTHON', '/opt/pironman5/venv/bin/python3')
-SERVICE_NAME = os.environ.get('PIRONMAN5_SERVICE', 'pironman5')
 USER_AGENT = 'piauto-upgrader'
+
+
+def _service_name():
+    override = (os.environ.get('PIAUTO_SERVICE') or os.environ.get('PIRONMAN5_SERVICE') or '').strip()
+    if override:
+        return override
+    for name in ('piauto', 'pironman5'):
+        if os.path.exists(f'/etc/systemd/system/{name}.service'):
+            return name
+    return 'piauto'
 
 _TAG_RE = re.compile(r'^v?\d[\w.\-+]*$')
 _cache = {'at': 0, 'payload': None}
@@ -318,7 +327,7 @@ def _apply_release(tag):
         _set_status(state='success', tag=tag, message=f'Installed {tag}. Restarting service…', finished_at=_now_iso())
         _append_log(f'installed {tag}')
         try:
-            _run(['systemctl', 'restart', SERVICE_NAME])
+            _run(['systemctl', 'restart', _service_name()])
         except Exception as exc:
             _append_log(f'restart warning: {exc}')
             _set_status(message=f'Installed {tag}. Restart pironman5 manually if the dashboard does not come back.')

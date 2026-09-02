@@ -4,6 +4,15 @@ All notable changes to [piauto](https://github.com/karpus2807/piauto) (`pm_auto`
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.15] - 2026-09-02
+
+### Added
+- Curl one-command installer: `curl -fsSL https://raw.githubusercontent.com/karpus2807/piauto/main/install.sh | sudo bash`
+- systemd service name **`piauto`** (legacy `pironman5.service` is disabled by the installer)
+
+### Changed
+- Installer order: OS packages → verify → venv → Python packages → enable `piauto.service`
+
 ## [2.0.14] - 2026-09-02
 
 ### Fixed
